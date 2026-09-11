@@ -76,6 +76,50 @@ test("player nameplates label their statistics and explain offline seats", async
   await page.locator(".players-panel").screenshot({ path: testInfo.outputPath("player-nameplates.png") });
 });
 
+test("legacy public cards show known Knights without guessing discarded cards or exposing a private hand", async ({ page }) => {
+  const view = fixture();
+  const owner = view.players.find((player) => player.id === view.viewerId);
+  delete owner.revealedDevelopment;
+  owner.knightsPlayed = 2;
+  await story(page, view);
+  await page.locator(`[data-public-player="${owner.id}"]`).click();
+  await expect(page.locator('#public-knights [data-revealed-type="knight"]')).toContainText("×2");
+  await expect(page.locator("#public-progress")).toContainText("No progress-card plays are recorded");
+  await expect(page.locator("#public-history-warning")).toBeVisible();
+  await expect(page.locator("#public-card-privacy")).toContainText("5 unplayed cards remain private");
+  await expect(page.locator("#public-cards-dialog [data-revealed-type]")).toHaveCount(1);
+  await expect(page.locator("#public-victory-section")).not.toBeVisible();
+  await expect(page.locator("#public-cards-dialog .play-card")).toHaveCount(0);
+});
+
+test("public gallery yields to mandatory discards and closes when its player is removed or a rematch begins", async ({ page }) => {
+  await story(page);
+  const ownerId = await page.evaluate(() => state.viewerId);
+  await page.locator(`[data-public-player="${ownerId}"]`).click();
+  await page.evaluate(() => {
+    state.phase = "discard";
+    state.pendingDiscards = { [state.viewerId]: Math.floor(me().resourceCount / 2) };
+    render();
+  });
+  await expect(page.locator("#public-cards-dialog")).not.toBeVisible();
+  await expect(page.locator("#discard-dialog")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.getElementById("discard-dialog").contains(document.activeElement))).toBe(true);
+  await page.locator("#discard-view-board").click();
+  const opponentId = await page.evaluate(() => state.players.find((player) => player.id !== state.viewerId).id);
+  await page.locator(`[data-public-player="${opponentId}"]`).click();
+  await page.evaluate((id) => {
+    state.players = state.players.filter((player) => player.id !== id);
+    for (const edge of state.board.edges) if (edge.road?.playerId === id) edge.road = null;
+    for (const vertex of state.board.vertices) if (vertex.structure?.playerId === id) vertex.structure = null;
+    render();
+  }, opponentId);
+  await expect(page.locator("#public-cards-dialog")).not.toBeVisible();
+  await page.locator(`[data-public-player="${ownerId}"]`).click();
+  await page.evaluate(() => { state.phase = "lobby"; state.pendingDiscards = {}; render(); });
+  await expect(page.locator("#public-cards-dialog")).not.toBeVisible();
+  await expect(page.locator("[data-public-player]")).toHaveCount(0);
+});
+
 test("resource trade controls use illustrated keyboard-operable choices, not native dropdowns", async ({ page }, testInfo) => {
   await story(page);
   await expect(page.locator("select")).toHaveCount(0);

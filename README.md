@@ -62,6 +62,10 @@ Cursors and pings are ephemeral, room-scoped messages with separate rate limits.
 
 ### Development-card inventory
 
+Use **Public cards** beneath a player's nameplate to view their revealed development cards. Played Knights are shown face-up and still count toward Largest Army. Used Monopoly, Road Building, and Year of Plenty cards are labelled **discarded**: the gallery is a history of their public use, not an active hand. Victory-point cards appear only after the game ends. Unplayed cards are never exposed by this view.
+
+Played-card counts are stored with the game and survive reconnects/restarts. Existing games use available structured activity from the current match to restore progress-card history; incomplete older history is labelled honestly rather than guessed. Knight counts remain exact. Starting a rematch clears that match's displayed plays.
+
 | Card | 3-4 players | 5-6 players |
 |---|---:|---:|
 | Knight | 14 | 20 |

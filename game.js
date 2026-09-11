@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { emptyProgressCounts, recordProgressPlay, revealedDevelopment } = require("./development-history");
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 const COLORS = ["#de5b43", "#2d82c7", "#f2b84b", "#6d9f4f", "#8357a5", "#20a398"];
@@ -377,6 +378,7 @@ function addPlayer(room, name, reconnectToken = crypto.randomBytes(32).toString(
     color: COLORS.find((color) => !room.players.some((other) => other.color === color)),
     resources: emptyResources(), roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4,
     points: 0, knightsPlayed: 0, longestRoad: 0, developmentCards: [], connected: true,
+    playedProgressCards: emptyProgressCounts(), playedProgressHistoryComplete: true,
   };
   room.players.push(player);
   appendLog(room, `${player.name} joined the expedition.`, {
@@ -977,6 +979,7 @@ function playDevelopment(room, player, action) {
       }
       break;
   }
+  recordProgressPlay(player, card.type);
   const detail = card.type === "monopoly" ? ` and collected ${count} ${action.resource}` :
     card.type === "yearOfPlenty" ? ` and received ${count} resource cards` : "";
   appendLog(room, `${player.name} played ${card.type === "yearOfPlenty" ? "Invention" : card.type}${detail}.`, {
@@ -1253,6 +1256,7 @@ function publicState(room, viewerId) {
       roadsLeft: player.roadsLeft, settlementsLeft: player.settlementsLeft, citiesLeft: player.citiesLeft,
       knightsPlayed: player.knightsPlayed, longestRoad: player.longestRoad,
       developmentCount: player.developmentCards.length,
+      revealedDevelopment: revealedDevelopment(player, room.phase === "finished"),
       ...(room.phase === "finished" && player.id !== viewerId ? {
         revealedVictoryPoints: player.developmentCards.filter((card) => card.type === "victoryPoint").length,
       } : {}),

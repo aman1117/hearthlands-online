@@ -45,6 +45,7 @@ const presence = new MapPresence({
   },
 });
 const activity = new ActivityFeed({ socket, getState: () => state, warn: notify });
+const publicCards = new PublicCardsGallery({ getState: () => state });
 const discardDialog = new DiscardDialog({
   getState: () => state, isBusy: () => busy, isReady: () => bound,
   submit: (resources) => action({ type: "discard", resources }),
@@ -87,6 +88,7 @@ const connection = new GameConnection({
     elements["admin-transfer-dialog"].close();
     activity.clear();
     discardDialog.reset();
+    publicCards.close();
     presence.clear();
     resetDice();
     state = null;
@@ -263,6 +265,7 @@ elements["leave-screen"].onclick = () => {
   presence.clear();
   activity.clear();
   discardDialog.reset();
+  publicCards.close();
   connection.pause();
   resetDice();
   state = null;
@@ -299,6 +302,7 @@ async function resume(saved) {
   presence.clear();
   activity.clear();
   discardDialog.reset();
+  publicCards.close();
   GameControls.close(false);
   resetDice();
   state = null;
@@ -556,6 +560,7 @@ function render() {
   updateDiscardCount();
   if (elements["resign-dialog"].open) renderResignSummary();
   if (elements["development-dialog"].open) updateDevelopmentChoice();
+  publicCards.update();
 }
 
 function renderPlayers() {
@@ -575,6 +580,19 @@ function renderPlayers() {
       ${state.pendingDiscards?.[p.id] ? `<span class="discard-owed-badge">Must return ${state.pendingDiscards[p.id]} cards</span>` : ""}
       ${state.phase !== "finished" && isAdmin() && p.id !== state.viewerId ? `<button class="text-button remove-player" data-player="${p.id}">Remove</button>` : ""}
       </div></article>`).join("");
+  if (state.phase !== "lobby") {
+    elements.players.querySelectorAll(".player-nameplate").forEach((plate, index) => {
+      const person = state.players[index];
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "public-cards-link";
+      button.dataset.publicPlayer = person.id;
+      button.setAttribute("aria-label", `View ${person.name}'s public development cards`);
+      button.innerHTML = `${art.icon("cards")}<span>Public cards</span><span aria-hidden="true">↗</span>`;
+      button.onclick = () => publicCards.open(person.id);
+      plate.appendChild(button);
+    });
+  }
   elements.players.querySelectorAll(".remove-player").forEach((button) => {
     button.onclick = () => openRemoval(button.dataset.player);
   });

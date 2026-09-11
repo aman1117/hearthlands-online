@@ -31,5 +31,14 @@ window.GameCards = (() => {
         `<button type="button" class="play-card secondary-button" data-card="${representative.id}" ${playable ? "" : "disabled"}>${playable ? "Play card" : "Not playable now"}</button>`}
     </article>`;
   }
-  return { resource, development };
+  function revealed(type, count, name, status) {
+    return `<article class="development-card physical-development revealed-development card-${type}" data-revealed-type="${type}" aria-label="${count} ${escape(name)}: ${escape(status)}">
+      <span class="development-edition">PUBLIC INFORMATION</span>
+      <span class="revealed-quantity">×${count}</span>
+      <div class="development-seal">${Tabletop.icon(emblems[type])}</div>
+      <strong class="development-title">${escape(name)}</strong>
+      <span class="revealed-status">${escape(status)}</span>
+    </article>`;
+  }
+  return { resource, development, revealed };
 })();

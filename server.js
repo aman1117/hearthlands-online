@@ -10,6 +10,7 @@ const {
   normalizePublicEvents, publicState, resignPlayer, shuffleMap, startGame,
 } = require("./game");
 const { createStorage, StorageError } = require("./storage");
+const { migratePublicDevelopmentHistory } = require("./development-history");
 
 const PROTOCOL_VERSION = 3;
 const RECEIPT_LIMIT = 2048;
@@ -915,6 +916,7 @@ function createGameServer(options = {}) {
         await storage.init();
         await refreshRooms();
         await expireRooms();
+        for (const room of await migratePublicDevelopmentHistory(storage)) rooms.set(room.code, room);
         initialized = true;
         await new Promise((resolve, reject) => {
           server.once("error", reject);

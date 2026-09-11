@@ -234,6 +234,30 @@
       <p id="history-status" class="small-note" role="status"></p><div id="history-events"></div>
       <button id="history-more" class="secondary-button">Load earlier events</button>
     </dialog>
+    <dialog id="public-cards-dialog" aria-labelledby="public-cards-title">
+      <button id="close-public-cards" class="dialog-close" aria-label="Close public cards">×</button>
+      <p class="eyebrow">VISIBLE TO ALL PLAYERS · READ ONLY</p>
+      <h2 id="public-cards-title">Public development cards</h2>
+      <div id="public-card-players"></div>
+      <div class="public-cards-layout">
+        <section class="public-knight-section" aria-labelledby="public-knights-heading">
+          <h3 id="public-knights-heading">Knights in play</h3>
+          <p id="public-knight-caption" class="public-section-note"></p>
+          <div id="public-knights" class="public-card-grid"></div>
+        </section>
+        <section class="public-progress-section" aria-labelledby="public-progress-heading">
+          <h3 id="public-progress-heading">Used progress cards</h3>
+          <p class="public-section-note">These cards were discarded after use. They are not an active hand.</p>
+          <div id="public-progress" class="public-card-grid"></div>
+          <p id="public-history-warning" class="public-history-warning hidden">Some early progress-card history predates this display. Only recorded plays are shown; missing counts are not guessed.</p>
+        </section>
+      </div>
+      <section id="public-victory-section" class="hidden">
+        <h3>Victory cards revealed</h3><div id="public-victory" class="public-card-grid"></div>
+      </section>
+      <p id="public-card-privacy" class="public-card-privacy"></p>
+      <button id="public-cards-done" class="secondary-button">Done</button>
+    </dialog>
     <dialog id="discard-dialog" aria-labelledby="discard-title">
       <p class="eyebrow">A SEVEN WAS ROLLED</p>
       <h2 id="discard-title">Choose the cards to return</h2>
@@ -256,6 +280,7 @@
     <script src="/presence.js"></script>
     <script src="/components.js"></script>
     <script src="/cards.js"></script>
+    <script src="/public-cards.js"></script>
     <script src="/activity.js"></script>
     <script src="/discard.js"></script>
     <script src="/connection.js"></script>
