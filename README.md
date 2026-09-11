@@ -210,6 +210,10 @@ Compose uses a separate PostgreSQL service and persistent named volumes. It does
 
 ### Azure deployment
 
+**Live game:** https://hearthlands-online.yellowwater-07aa7c55.centralindia.azurecontainerapps.io
+
+The Central India deployment uses a fresh dedicated `hearthlands` database and a restricted `hearthlands_app` login on the existing PostgreSQL server. Existing local games were intentionally not migrated; the local database and other applications' data were left untouched. The application connection is stored as a Container Apps secret and in the ignored, access-restricted local `.env.azure` file. It does not use the shared administrator login at runtime.
+
 Host the frontend and Socket.IO backend together in one **Azure Container App**, backed by a dedicated PostgreSQL database. Vercel Functions now support WebSockets, but connections have a maximum duration and future connections can reach another function instance. This game's single-coordinator design fits a continuously running container better; splitting the frontend adds another origin/deployment without improving the game server.
 
 `infra/main.bicep` reuses these resources in subscription `e8920202-01dd-4705-a790-187313cdde20`:
@@ -218,14 +222,14 @@ Host the frontend and Socket.IO backend together in one **Azure Container App**,
 |---|---|
 | `growth-tracker-rg/growth-tracker-env` | Existing Container Apps environment in Central India |
 | `growth-tracker-rg/growthtrackeracr` | Existing registry; separate `hearthlands-online` image repository |
-| `aman/aman` PostgreSQL server | Existing server, **only after authorized credentials and a dedicated game database are available** |
+| `aman/aman` PostgreSQL server | Dedicated `hearthlands` database and restricted application login |
 | Resource group `aman` | New `hearthlands-online` app and its image-pull identity |
 
 The template creates only the game app, a managed identity, and an `AcrPull` assignment. It does not deploy or modify the PostgreSQL server, existing apps, environment, registry settings, or firewall. Image pulls use managed identity rather than shared registry passwords. HTTPS-only ingress supports WebSockets on port 3000. One 0.25-vCPU/0.5-GiB replica stays running; do not enable autoscaling.
 
 **Cost:** the new running replica and its logs incur usage charges, even when nobody is playing. The existing registry, environment, and database are reused rather than creating duplicate services. Long-lived game connections can result in active rather than idle billing. This is not a free or highly available multi-instance deployment.
 
-**Database prerequisite:** use an authorized account to create a dedicated `hearthlands` database and least-privileged application login. Keep its connection string outside Git and use verified TLS. Do not reuse an unrelated application's tables, reset the server password, change shared authentication, or deploy with a dummy connection string. A read-only `npm run db:check` must succeed before deployment. The container's temporary filesystem is not a substitute for PostgreSQL.
+**Database prerequisite:** for a new environment, use an authorized setup account to create a dedicated game database and least-privileged application login. For this deployment, those already exist: reuse the protected application credential rather than recreating them. Keep connection strings outside Git and use verified TLS. Do not reuse an unrelated application's tables, reset the server password, change shared authentication, or deploy with a dummy connection string. A read-only connectivity probe must succeed before deployment. The container's temporary filesystem is not a substitute for PostgreSQL.
 
 To build a release without installing Docker locally:
 
@@ -279,6 +283,8 @@ The Node suite covers rules and real Socket.IO clients, including saved position
 | Existing features | Counteroffers, all development cards, shared pointers/touch pings, zoom, shuffle/start, sound and fullscreen |
 
 Component-only stories use explicit render fixtures. Integration tests drive real controls through Socket.IO; failure tests gate WebSocket frames rather than adding public testing endpoints. There is no production endpoint for injecting dice rolls, resources, or game positions.
+
+`e2e/deployment.spec.js` is opt-in: set `HEARTHLANDS_DEPLOYMENT_URL` to an HTTPS game URL to exercise real cloud play, WebSocket heartbeats, offline recovery, and the saved-table Resume control after reopening the browser. It creates a new test room and deliberately does not delete it. After restarting only the game revision, set `HEARTHLANDS_RECOVERY_FILE` to the generated private `cloud-recovery.json` artifact and run the cloud-process-restart case to verify all three saved players. Recovery artifacts contain only newly generated test-seat credentials, remain under ignored `test-results`, and must not be published.
 
 ## Architecture
 
