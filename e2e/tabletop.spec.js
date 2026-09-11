@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { createGameServer } = require("../server");
+const { previewPlacement } = require("./ui.cjs");
 
 async function table(browser, count = 2, mobileIndex = -1) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "hearthlands-tabletop-"));
@@ -162,7 +163,8 @@ test("point mode cannot place settlements, while ordinary placement and map drag
     expect(await actor.evaluate(() => state.revision)).toBe(initial.revision);
     expect(await actor.evaluate(() => state.setupNeedsRoad)).toBe(false);
     await actor.locator("#ping-mode").click();
-    await actor.locator(`[data-place="${initial.id}"]`).click();
+    await previewPlacement(actor, initial.id);
+    await actor.locator("#confirm-placement").click();
     await actor.waitForFunction(() => state.setupNeedsRoad && !busy);
     const revision = await actor.evaluate(() => state.revision);
     await actor.locator("#zoom-in").click();

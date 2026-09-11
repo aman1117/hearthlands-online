@@ -1,6 +1,6 @@
 "use strict";
 
-// Drive the same resource tiles and location chooser a human uses.
+// Drive the same illustrated controls and board hit targets a human uses.
 async function choose(page, id, value) {
   const control = page.locator(`#${id}`);
   if (await control.locator('[role="radio"]').count()) {
@@ -11,18 +11,36 @@ async function choose(page, id, value) {
   }
 }
 
+async function boardPoint(page, id) {
+  await page.locator("#board").scrollIntoViewIfNeeded();
+  return page.evaluate((id) => {
+    const target = boardPlacement.targets.find((target) => target.id === id);
+    if (!target) throw new Error(`No legal board target ${id}`);
+    const point = new DOMPoint(target.x, target.y).matrixTransform(elements.board.getScreenCTM());
+    return { x: point.x, y: point.y };
+  }, id);
+}
+
+async function previewPlacement(page, id, { touch = false } = {}) {
+  const point = await boardPoint(page, id);
+  if (touch) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
+  await page.waitForFunction((id) => boardPlacement.selection?.id === id, id);
+}
+
 async function perform(page, move) {
   const before = await page.evaluate(() => state.revision);
   if (["setupSettlement", "setupRoad", "moveRobber", "buildRoad", "buildSettlement", "buildCity"].includes(move.type)) {
     const type = { buildRoad: "road", buildSettlement: "settlement", buildCity: "city" }[move.type];
     const free = await page.evaluate(() => state.freeRoadsRemaining);
     if (type && !free) await page.locator(`[data-build="${type}"]`).click();
-    await choose(page, "location-select", move.edgeId || move.vertexId || move.tileId);
-    await page.locator("#place-location").click();
+    await previewPlacement(page, move.edgeId || move.vertexId || move.tileId);
+    await page.locator("#confirm-placement").click();
   } else if (move.type === "roll") await page.locator("#roll-button").click();
   else if (move.type === "endTurn") await page.locator("#end-turn").click();
   else if (move.type === "buyDevelopment") await page.locator("#buy-development").click();
   else if (move.type === "finishFreeRoads") await page.locator("#finish-roads").click();
+  else if (move.type === "undoPlacement") await page.locator("#undo-placement").click();
   else if (move.type === "discard") {
     for (const [resource, amount] of Object.entries(move.resources)) await page.locator(`#discard-${resource}`).fill(String(amount));
     await page.locator("#submit-discard").click();
@@ -44,4 +62,4 @@ async function perform(page, move) {
   await page.waitForFunction((revision) => !busy && state.revision > revision, before);
 }
 
-module.exports = { choose, perform };
+module.exports = { choose, perform, boardPoint, previewPlacement };

@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { createGameServer } = require("../server");
 const { createRoom, addPlayer, startGame, applyAction, publicState } = require("../game");
-const { choose } = require("./ui.cjs");
+const { perform } = require("./ui.cjs");
 
 async function fixture(browser, emptyVictims = false) {
   const { room, player: actor } = createRoom("Rowan");
@@ -108,8 +108,7 @@ test("seven opens clear discard choices, preserves a draft during peer updates, 
     expect(discarded.bank.sheep).toBe(beforeBank.sheep + 4);
     expect(await actor.evaluate(() => state.players.find((p) => p.id === state.viewerId).resourceCount)).toBe(5);
     await actor.setViewportSize({ width: 1440, height: 1000 });
-    await choose(actor, "location-select", "t0");
-    await actor.locator("#place-location").click();
+    await perform(actor, { type: "moveRobber", tileId: "t0" });
     await actor.waitForFunction(() => state.phase === "steal" && !busy);
     await expect(actor.locator(".steal-target")).toHaveCount(2);
     await actor.locator("#required-action").screenshot({ path: testInfo.outputPath("steal-choice.png") });
@@ -140,8 +139,7 @@ test("a seven with no large hands goes straight to the robber and empty opponent
     await actor.waitForFunction(() => state.phase === "robber" && !busy);
     for (const page of t.pages) await expect(page.locator("#discard-dialog")).not.toBeVisible();
     const before = (await t.read()).players.map((p) => p.resources);
-    await choose(actor, "location-select", "t0");
-    await actor.locator("#place-location").click();
+    await perform(actor, { type: "moveRobber", tileId: "t0" });
     await actor.waitForFunction(() => state.phase === "action" && !busy);
     await expect(actor.locator(".steal-target")).toHaveCount(0);
     await expect(actor.locator("#toast")).toContainText("No eligible opponent");

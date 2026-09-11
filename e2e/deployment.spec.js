@@ -59,20 +59,33 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     }
     const host = pages[0];
     await expect(host.locator(".player-nameplate")).toHaveCount(3);
+    await host.locator("#ping-mode").click();
     await host.locator("#start-game").click();
     await host.waitForFunction(() => state.phase === "setup" && !busy);
     let view = await host.evaluate(() => state);
+    let undoExercised = false;
     while (view.phase === "setup") {
       const page = byId.get(view.currentPlayerId);
       await page.waitForFunction((revision) => state.revision >= revision && !busy, view.revision);
+      await expect(page.locator("#ping-mode")).toHaveAttribute("aria-pressed", "false");
       const move = await page.evaluate(() => state.setupNeedsRoad
         ? { type: "setupRoad", edgeId: state.legal.roadEdges[0] }
         : { type: "setupSettlement", vertexId: state.legal.settlementVertices[0] });
+      const beforePlacement = !undoExercised ? await persistentView(page) : null;
       await perform(page, move);
+      if (!undoExercised) {
+        await perform(page, { type: "undoPlacement" });
+        const undone = await persistentView(page);
+        expect(undone.board).toEqual(beforePlacement.board);
+        expect(undone.self).toEqual(beforePlacement.self);
+        await perform(page, move);
+        undoExercised = true;
+      }
       view = await page.evaluate(() => state);
     }
     const actor = byId.get(view.currentPlayerId);
     await actor.waitForFunction((revision) => state.revision >= revision && !busy, view.revision);
+    await expect(actor.locator("#undo-placement")).toBeDisabled();
     await perform(actor, { type: "roll" });
     if (await actor.evaluate(() => state.phase === "robber")) {
       await perform(actor, { type: "moveRobber", tileId: await actor.evaluate(() => state.legal.robberTiles[0]) });

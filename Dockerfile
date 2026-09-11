@@ -8,7 +8,7 @@ ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0 DATA_DIR=/app/data
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json ./
-COPY game.js server.js development-history.js ./
+COPY game.js server.js development-history.js placement-undo.js ./
 COPY storage ./storage
 COPY public ./public
 RUN mkdir data && chown node:node data && node -e "require('./server')"

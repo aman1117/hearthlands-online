@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/style.css">
     <link rel="stylesheet" href="/components.css">
     <link rel="stylesheet" href="/finish.css">
+    <link rel="stylesheet" href="/placement.css">
     <link rel="preload" href="/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
   </head>
@@ -96,10 +97,12 @@
           <div class="table-toolbar">
             <div class="map-caption"><span class="eyebrow">THE ISLAND</span><strong id="map-variant">Preparing your table</strong></div>
             <div class="presence-tools">
+              <button id="undo-placement" class="tool-button undo-placement hidden" disabled><b aria-hidden="true">↶</b><span>Undo</span></button>
               <button id="toggle-pointers" class="tool-button" aria-pressed="true" title="Share and see player cursors"><span data-icon="pointer"></span><span>Cursors</span></button>
               <button id="ping-mode" class="tool-button" aria-pressed="false" title="Point mode (P). Alt-click also pings the map."><span data-icon="ping"></span><span>Point</span><kbd>P</kbd></button>
             </div>
           </div>
+          <div id="build-actions" class="build-grid board-build-tray"></div>
           <div class="map-frame">
             <div class="map-tools" aria-label="Map controls">
               <button id="zoom-out" class="map-button" aria-label="Zoom out">−</button>
@@ -110,6 +113,15 @@
             <div class="compass" aria-hidden="true"><span>N</span>✧</div>
             <div id="map-tip" class="map-tip">Move your cursor to point. Alt-click to ping.</div>
             <div id="board-prompt" class="board-prompt"></div>
+          </div>
+          <div id="placement-toolbar" class="placement-toolbar hidden" role="region" aria-labelledby="placement-title">
+            <strong id="placement-title"></strong>
+            <p id="placement-detail"></p>
+            <p id="placement-warning"></p>
+            <div class="placement-buttons">
+              <button id="cancel-placement" class="secondary-button">Cancel</button>
+              <button id="confirm-placement" class="primary-button">Confirm placement</button>
+            </div>
           </div>
           <section id="hand-section" class="hand-dock hidden">
             <div class="hand-heading"><span class="eyebrow">PRIVATE HAND</span><h2>Your resources</h2><span id="hand-total"></span><span class="private-label"><span data-icon="lock"></span>Hidden from opponents</span></div>
@@ -137,8 +149,7 @@
           <section id="actions-section" class="panel-section hidden">
             <div class="section-heading"><h2>Build &amp; play</h2><span id="piece-supply" class="piece-supply"></span></div>
             <div id="dice-area" class="dice-area"></div>
-            <div id="build-actions" class="build-grid"></div>
-            <div id="location-picker" class="location-picker hidden"></div>
+            <div id="placement-directions" class="placement-directions hidden" role="status"></div>
             <button id="end-turn" class="primary-button hidden">End turn</button>
           </section>
 
@@ -179,18 +190,19 @@
       <div class="rules-grid">
         <article><strong>01</strong><h3>Found</h3><p>Place two settlements and roads in snake order. Your second settlement gathers starting resources.</p></article>
         <article><strong>02</strong><h3>Gather</h3><p>Roll each turn. Settlements collect one resource from matching tiles; cities collect two.</p></article>
-        <article><strong>03</strong><h3>Build</h3><p>Connect roads, keep settlements two paths apart, and upgrade your settlements into cities.</p></article>
+        <article><strong>03</strong><h3>Build</h3><p>Choose a piece above the board, tap a highlighted path or corner, then confirm its preview. Tap your settlement to preview a city upgrade. Cancel or select a different spot before confirming.</p></article>
         <article><strong>04</strong><h3>Trade</h3><p>Trade 4:1 with the bank, 3:1 at a generic port, or 2:1 at your matching resource port. Player trades must involve the active primary player. No gifts or matching resources on both sides.</p></article>
         <article><strong>05</strong><h3>The robber</h3><p>On a seven, everyone holding over seven resources chooses half to discard, rounded down. After all discards, the roller moves the robber and chooses a neighboring opponent to steal one random resource from. Blocked tiles do not produce.</p></article>
         <article><strong>06</strong><h3>Development</h3><p>Pay one sheep, wheat, and ore. Play one older card per activation, before rolling or during actions: Knight moves the robber; Road Building grants two roads; Year of Plenty takes two available resources; Monopoly takes one resource type from every opponent. Hidden victory cards can win immediately when bought.</p></article>
         <article><strong>07</strong><h3>Bonuses</h3><p>The first unbroken road of at least five earns two points. A longer road takes the bonus; the holder keeps ties. Opponent settlements interrupt roads. Three played Knights earn Largest Army; a larger army takes its two points.</p></article>
         <article><strong>08</strong><h3>Five or six</h3><p>The primary player rolls, trades, and builds. Then the player three seats clockwise takes actions without rolling or trading with players. Bank trading and development cards are allowed. Both markers then move one seat. Either active player can win.</p></article>
-        <article><strong>09</strong><h3>Point together</h3><p>Everyone can share their cursor, even when it is not their turn. Use Point mode (P) and click or tap the map to send a coloured ping. Alt-click works too. Point mode never places a piece. Turn Cursors off to hide and stop sharing cursor movements.</p></article>
-        <article><strong>10</strong><h3>Make it your table</h3><p>The host can shuffle the island in the lobby. Starting the game locks that exact preview. The board expands automatically when a fifth player joins. Use zoom, fullscreen, or the location selector for precise placement. Sound is optional and off by default.</p></article>
+        <article><strong>09</strong><h3>Point together</h3><p>Everyone can point, even off-turn. Point mode (P) and Alt-click send a coloured ping, never a piece. Your turn automatically returns to placement. If you enable pointing during a placement, use Return to placement to build.</p></article>
+        <article><strong>10</strong><h3>Make it your table</h3><p>The host can shuffle the island in the lobby. Starting the game locks that exact preview. The board expands when a fifth player joins. Zoom, drag, or pinch to inspect the board. Arrow keys move among legal spots; Enter previews one. Sound is optional and off by default.</p></article>
       </div>
       <p>Three or four players use 19 land tiles and 19 cards of each resource. Five or six use 30 land tiles and 24 of each. If production exceeds the bank, nobody receives that type unless just one player is affected; then they take what remains. A city replaces a settlement and returns that piece. You have 15 roads, 5 settlements, and 4 cities.</p>
       <p><strong>Returning later:</strong> close your browser or use Save &amp; exit. Your seat, hand, and board position remain saved. Select the table under Saved tables to return, or use your private resume key on another device. A lost connection never resigns for you.</p>
       <p><strong>Removal house rule:</strong> request removal from the admin; your holdings stay yours until approved. Only the admin may remove a player. The admin must explicitly choose another active player as successor before leaving. Going offline never transfers the admin role. Approved removal returns held resources and unplayed development cards and removes that player's roads and buildings. Used card effects are not undone. The island and supply size remain unchanged; survivors can continue, including two-player continuation.</p>
+      <p><strong>Placement undo house rule:</strong> Undo (Ctrl+Z or Cmd+Z) reverses eligible placements during your own activation and refunds their cost. It cannot undo another player's turn, a completed game, trades, drawn cards, dice results, or theft. A starting settlement can be changed before confirming its road; the road finishes that setup turn. Moving the robber can be undone only before stealing or another irreversible action. Unconfirmed previews can always be cancelled before submission.</p>
       <p><strong>Development decks:</strong> three/four-player games contain 14 Knights, 5 Victory Points, and 2 each of Monopoly, Road Building, and Year of Plenty (25 total). Five/six-player games contain 20 Knights, 5 Victory Points, and 3 each of those progress cards (34 total).</p>
       <p class="victory-note">Reach <strong>10 points on your own activation</strong> to win, including hidden victory cards. Victory is automatic.</p>
       <p class="small-note">Uses the base game and 2025 paired-player extension mechanics. Does not include separate expansions such as Seafarers or Cities &amp; Knights. <a href="https://www.catan.com/understand-catan/game-rules" target="_blank" rel="noopener">Publisher rules reference</a>.</p>
@@ -279,6 +291,7 @@
     <script src="/tabletop.js"></script>
     <script src="/presence.js"></script>
     <script src="/components.js"></script>
+    <script src="/placement.js"></script>
     <script src="/cards.js"></script>
     <script src="/public-cards.js"></script>
     <script src="/activity.js"></script>

@@ -19,9 +19,11 @@ Each browser profile has a private seat. To try multiple players on one computer
 
 ## Playing
 
-The map highlights only legal placements. Click a highlighted junction, path, or hex, or use the **location selector** beside the map for keyboard/mobile precision. The island uses original landscape art, raised number tokens, and wooden-style pieces; terrain names are not printed across the hexes. Number tokens and probability dots remain visible. Player panels distinguish resource cards, development cards, longest-road length, and played knights.
+The map is the placement control; no location dropdown is required. Choose **Road**, **Settlement**, or **City** from the piece tray above the island, then click/tap a highlighted path, corner, or existing settlement. Setup pieces, free roads, and the robber are selected automatically when required. A ghost preview and **Confirm placement** / **Cancel** controls let you inspect or change the location before anything is spent or sent. The island uses original landscape art, raised number tokens, and wooden-style pieces; terrain names are not printed across the hexes. Number tokens and probability dots remain visible. Player panels distinguish resource cards, development cards, longest-road length, and played knights.
 
-The surrounding controls are purpose-built for play: compact player nameplates, physical-style resource/development cards, illustrated trade choices, player-colour trade targets, bounded quantity steppers, and a searchable location chooser. Self-hosted Cinzel and Source Sans 3 fonts keep the table readable without external font requests. The map artwork is unchanged.
+Board selection uses screen-space touch tolerance, including thin vertical roads, and follows the actual zoom/pan transform. Dragging or pinching does not place a piece. Keyboard users can Tab to the board, move among legal targets with arrows/Home/End, press Enter/Space to preview, and Tab to the confirmation controls. Previewing and cancelling never consumes a request sequence or resource. A preview is not a saved placement; reloading cancels it.
+
+The surrounding controls are purpose-built for play: compact player nameplates, physical-style resource/development cards, illustrated trade choices, player-colour trade targets, and bounded quantity steppers. Self-hosted Cinzel and Source Sans 3 fonts keep the table readable without external font requests. The map artwork is unchanged.
 
 Dice use a six-faced roll-and-settle animation. A pending roll remains visibly unconfirmed on a slow connection; only the server response chooses its final faces. Reduced-motion settings replace tumbling with a quiet pending indication.
 
@@ -34,6 +36,7 @@ Everyone seated at a table can point, including players waiting for their turn. 
 | **Point** or **P** | Toggle point mode, then click/tap a location to send a coloured ripple ping; never places a piece |
 | **Alt-click** | Send a ping without switching tools |
 | **Escape** | Leave point/build selection mode |
+| **Undo / Ctrl+Z / Cmd+Z** | Undo an eligible current-turn placement; the keyboard shortcut cancels an unconfirmed preview first |
 | **+ / - / percentage** | Zoom in, zoom out, or fit the island |
 | **Drag / pinch** | Pan a zoomed island or pinch-to-zoom with Panzoom |
 | **Ctrl/Cmd + wheel** | Zoom toward the pointer |
@@ -42,6 +45,18 @@ Everyone seated at a table can point, including players waiting for their turn. 
 In the lobby, the host can **Shuffle island** as often as desired. Everyone sees the same persisted preview, and **the game starts on that exact map**. Joining/leaving preserves the map unless the room crosses the four/five-player board-size boundary. Five and six players share the expanded board size. Shuffling is unavailable after the game starts, so roads, resources, and settlements cannot be reset accidentally.
 
 Cursors and pings are ephemeral, room-scoped messages with separate rate limits. They do not advance the game, change resources, or write game saves. Cursors disappear when the pointer leaves the map; pings briefly linger so friends can see them. All markers clear when leaving a room, reconnecting, or changing maps, and expire when updates stop. Normalized board coordinates keep them aligned even when players use different zoom levels or screen sizes.
+
+Point mode automatically turns off when your turn begins or a required placement step arrives, for admins and guests alike. If you deliberately enable it during placement, the interface explicitly says **You are pointing, not placing** and offers **Return to placement**. Pointing never silently replaces a build action.
+
+### Placement undo (house rule)
+
+**Undo** reverses eligible placements from the current activation, most recent first, with authoritative refunds and returned pieces. It is not a rewind of the whole game. The opportunity is saved with the game and can survive a reconnect/restart; a stale undo request cannot target a newer placement.
+
+Starting settlements can be changed before their road hands control to the next player. Free-road undo restores the unfinished road obligation without returning the spent development card. Robber relocation can be changed only before stealing, another placement, or another irreversible action. Confirming a setup road ends that setup activation; the preview warns you beforehand.
+
+Turn handoffs, completed games, dice/results, development-card actions, completed resource exchanges, stealing and other irreversible operations prevent rewinding earlier placements. Undo cannot reclaim another player's turn or reveal a stolen/drawn card and then reverse it. Activity keeps both the original placement and its reversal instead of erasing history.
+
+### Core mechanics
 
 | System | Behavior |
 |---|---|

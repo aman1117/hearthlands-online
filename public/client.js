@@ -50,6 +50,13 @@ const discardDialog = new DiscardDialog({
   getState: () => state, isBusy: () => busy, isReady: () => bound,
   submit: (resources) => action({ type: "discard", resources }),
 });
+const boardPlacement = new BoardPlacement({
+  svg: elements.board, getState: () => state, getPlacement: () => state ? placement() : null,
+  isReady: () => bound, isBusy: () => busy, isPointing: () => presence.pingMode,
+  isDragging: () => suppressMapClick, submit: (payload) => action(payload),
+  cancelBuild() { selectedAction = null; renderActions(); renderBoard(); },
+  describe: locationLabel, announce: notify,
+});
 const connection = new GameConnection({
   socket,
   onState: applyState,
@@ -89,6 +96,7 @@ const connection = new GameConnection({
     activity.clear();
     discardDialog.reset();
     publicCards.close();
+    boardPlacement.reset();
     presence.clear();
     resetDice();
     state = null;
@@ -120,6 +128,7 @@ async function send(event, payload = {}) {
 }
 
 async function action(payload) {
+  if (!["setupSettlement", "setupRoad", "buildRoad", "buildSettlement", "buildCity", "moveRobber"].includes(payload.type)) boardPlacement.reset();
   const id = requestId();
   const roll = payload.type === "roll" ? beginDiceRoll(id) : null;
   const result = await send("gameAction", { ...payload, requestId: id });
@@ -253,9 +262,16 @@ document.addEventListener("fullscreenchange", () => {
   elements["fullscreen-toggle"].setAttribute("aria-label", document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen");
 });
 document.addEventListener("keydown", (event) => {
-  if (!state || event.ctrlKey || event.metaKey || event.target.closest("input, textarea, [role=combobox], [role=radio], [contenteditable], .choice-popup, dialog[open]")) return;
+  if (!state || event.target.closest("input, textarea, [role=combobox], [role=radio], [contenteditable], .choice-popup, dialog[open]")) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (boardPlacement.selection) boardPlacement.cancel();
+    else boardPlacement.undo();
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) return;
   if (event.key.toLowerCase() === "p") { event.preventDefault(); setPointMode(!presence.pingMode); }
-  if (event.key === "Escape") { selectedAction = null; setPointMode(false); renderActions(); renderBoard(); }
+  if (event.key === "Escape") { boardPlacement.cancel(); setPointMode(false); }
 });
 elements["copy-code"].onclick = () => copy(state.code, "Room code");
 elements["copy-invite"].onclick = () => copy(`${location.origin}/?room=${state.code}`, "Invite link");
@@ -266,6 +282,7 @@ elements["leave-screen"].onclick = () => {
   activity.clear();
   discardDialog.reset();
   publicCards.close();
+  boardPlacement.reset();
   connection.pause();
   resetDice();
   state = null;
@@ -303,6 +320,7 @@ async function resume(saved) {
   activity.clear();
   discardDialog.reset();
   publicCards.close();
+  boardPlacement.reset();
   GameControls.close(false);
   resetDice();
   state = null;
@@ -316,6 +334,13 @@ function applyState(next) {
   state = next;
   seat = connection.currentSeat;
   bound = true;
+  if (state.currentPlayerId === state.viewerId && (!previous || previous.currentPlayerId !== state.currentPlayerId ||
+      previous.turnNumber !== state.turnNumber ||
+      ((["setup", "robber"].includes(state.phase) || state.freeRoadsRemaining) &&
+        (previous.phase !== state.phase || previous.setupNeedsRoad !== state.setupNeedsRoad || previous.freeRoadsRemaining !== state.freeRoadsRemaining)))) {
+    presence.setPingMode(false);
+    elements["ping-mode"].setAttribute("aria-pressed", "false");
+  }
   if (diceMotion && (diceMotion.turn !== state.turnNumber || diceMotion.actor !== state.currentPlayerId)) resetDice();
   document.body.classList.remove("seat-unavailable");
   elements["landing-error"].textContent = "";
@@ -357,6 +382,7 @@ function updateBusy() {
   document.body.classList.toggle("request-pending", busy);
   elements.game.setAttribute("aria-busy", String(busy));
   discardDialog.refresh();
+  boardPlacement.controls();
 }
 function beginDiceRoll(id) {
   if (!state || !bound || busy) return null;
@@ -486,34 +512,40 @@ function tone(kind) {
   oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
 }
 function setPointMode(enabled) {
+  if (enabled) boardPlacement.reset();
   presence.setPingMode(enabled);
   elements["ping-mode"].setAttribute("aria-pressed", String(enabled));
+  renderActions();
   renderBoard();
 }
 function initPanzoom() {
   if (panzoom) return;
   const surface = elements["map-transform"];
-  let origin = null;
+  const pointers = new Map();
   surface.addEventListener("pointerdown", (event) => {
-    suppressMapClick = false;
-    origin = { x: event.clientX, y: event.clientY };
+    if (!pointers.size) suppressMapClick = false;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointers.size > 1) suppressMapClick = true;
   }, true);
-  surface.addEventListener("pointermove", (event) => {
-    if (origin && event.buttons && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 7) suppressMapClick = true;
+  document.addEventListener("pointermove", (event) => {
+    const origin = pointers.get(event.pointerId);
+    if (origin && Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 7) suppressMapClick = true;
   }, true);
+  document.addEventListener("pointerup", (event) => pointers.delete(event.pointerId), true);
+  document.addEventListener("pointercancel", (event) => { pointers.delete(event.pointerId); suppressMapClick = true; }, true);
+  window.addEventListener("blur", () => { pointers.clear(); suppressMapClick = true; });
   surface.addEventListener("click", (event) => {
     if (suppressMapClick) { event.preventDefault(); event.stopPropagation(); }
-    origin = null;
   }, true);
   panzoom = Panzoom(surface, {
     minScale: 1, maxScale: 3, contain: "outside", panOnlyWhenZoomed: true,
-    excludeClass: "map-choice", cursor: "default", duration: 180,
-    handleStartEvent(event) { if (!presence.pingMode && !event.altKey) event.preventDefault(); },
+    excludeClass: "map-control", cursor: "default", duration: 180,
+    handleStartEvent(event) { if (!presence.pingMode && !event.altKey && !event.target.closest("[data-place]")) event.preventDefault(); },
   });
   surface.addEventListener("panzoomchange", (event) => {
     zoom = event.detail.scale;
     elements["zoom-reset"].textContent = `${Math.round(zoom * 100)}%`;
-    requestAnimationFrame(() => presence.refreshPosition());
+    requestAnimationFrame(() => { presence.refreshPosition(); boardPlacement.render(); });
   });
   elements["map-scroll"].addEventListener("wheel", (event) => {
     if (event.ctrlKey || event.metaKey) { event.preventDefault(); panzoom.zoomWithWheel(event); }
@@ -521,7 +553,7 @@ function initPanzoom() {
   const resize = new ResizeObserver(() => {
     const position = panzoom.getPan();
     panzoom.pan(position.x, position.y, { force: true });
-    requestAnimationFrame(() => presence.refreshPosition());
+    requestAnimationFrame(() => { presence.refreshPosition(); boardPlacement.render(); });
   });
   resize.observe(elements["map-scroll"]);
 }
@@ -711,6 +743,7 @@ function placement() {
 }
 
 function renderActions() {
+  const focusedBuild = document.activeElement?.dataset.build;
   elements["actions-section"].classList.toggle("hidden", ["lobby", "finished"].includes(state.phase));
   const rolling = Boolean(diceMotion?.active);
   elements["dice-area"].innerHTML = rolling || state.dice ? `<div class="dice-result dice-stage ${rolling ? "is-rolling" : diceMotion?.settled ? "just-settled" : ""}" aria-live="polite">${GameControls.dice(rolling ? null : state.dice[0])}${GameControls.dice(rolling ? null : state.dice[1])}<strong>${rolling ? connection.pending ? "Rolling… awaiting result" : "Rolling…" : `Rolled ${state.dice[0] + state.dice[1]}`}</strong></div>` : "";
@@ -720,16 +753,17 @@ function renderActions() {
   }
   const keys = { road: "roadEdges", settlement: "settlementVertices", city: "cityVertices" };
   const regular = ["action", "roll"].includes(state.phase) && !state.freeRoadsRemaining;
-  elements["build-actions"].innerHTML = regular ? Object.keys(keys).map((kind) => `
+  elements["build-actions"].innerHTML = regular && mine() ? Object.keys(keys).map((kind) => `
     <button class="action-button ${selectedAction === kind ? "active" : ""}" data-build="${kind}" title="${escapeHtml(buildReason(kind, list(keys[kind]).length > 0))}" aria-label="Build ${kind}: ${COST_LABELS[kind]}" ${list(keys[kind]).length ? "" : "disabled"}>
     ${art.icon(kind)}<strong>${kind[0].toUpperCase() + kind.slice(1)}</strong><span class="cost-icons" aria-hidden="true">${Object.entries(COSTS[kind]).map(([r, amount]) => `${art.icon(r)}${amount > 1 ? `<span>${amount}</span>` : ""}`).join("")}</span></button>`).join("") : "";
   elements["build-actions"].querySelectorAll("[data-build]").forEach((button) => {
-    button.onclick = () => {
+    button.onclick = (event) => {
       presence.setPingMode(false);
       elements["ping-mode"].setAttribute("aria-pressed", "false");
       selectedAction = selectedAction === button.dataset.build ? null : button.dataset.build;
       renderActions();
       renderBoard();
+      if (event.detail === 0) elements.board.querySelector('[data-place][tabindex="0"]')?.focus({ preventScroll: true });
     };
   });
   if (legal().canFinishFreeRoads) {
@@ -739,11 +773,15 @@ function renderActions() {
   elements["end-turn"].classList.toggle("hidden", !legal().canEndTurn);
   elements["end-turn"].textContent = state.turnRole === "secondary" ? "Finish paired turn" : "End turn";
   const selected = placement();
-  elements["location-picker"].classList.toggle("hidden", !selected || !selected.ids.length);
+  elements["placement-directions"].classList.toggle("hidden", !selected || !selected.ids.length);
   if (selected?.ids.length) {
-    elements["location-picker"].innerHTML = `${GameControls.select("location-select", `Or choose a ${selected.label}`, selected.ids.map((id) => ({ value: id, label: locationLabel(id) })))}<button id="place-location" class="secondary-button">Place ${selected.label}</button>`;
-    document.querySelector("#place-location").onclick = () => action({ type: selected.type, [selected.key]: GameControls.read("location-select") });
+    elements["placement-directions"].innerHTML = presence.pingMode
+      ? '<strong>You are pointing, not placing</strong><p>Pointing shares a location with the table. Return to placement to put your piece on the board.</p><button id="resume-placement" class="secondary-button">Return to placement</button>'
+      : `<strong>Place directly on the island</strong><p>${selected.key === "edgeId" ? "Tap an outlined path" : selected.key === "tileId" ? "Tap a highlighted hex" : selected.type === "buildCity" ? "Tap one of your outlined settlements" : "Tap a highlighted corner"} to preview your ${selected.label}. Confirm it on the board, or choose another spot.</p><small>Keyboard: Tab to the board, arrows to move, Enter to preview. Escape cancels.</small>`;
+    document.getElementById("resume-placement")?.addEventListener("click", () => setPointMode(false));
   }
+  boardPlacement.controls();
+  if (focusedBuild) elements["build-actions"].querySelector(`[data-build="${focusedBuild}"]:not(:disabled)`)?.focus({ preventScroll: true });
 }
 
 function buildReason(kind, available) {
@@ -762,12 +800,16 @@ function buildReason(kind, available) {
 function locationLabel(id) {
   const vertex = state.board?.vertices.find((v) => v.id === id);
   const tile = state.board?.tiles.find((t) => t.id === id);
+  const edge = state.board?.edges.find((candidate) => candidate.id === id);
   if (tile) return `Tile ${Number(id.slice(1)) + 1} · ${tile.resource} ${tile.number || ""}`;
   if (vertex) return `Junction ${Number(id.slice(1)) + 1} · ${vertex.adjacentTiles.map((tileId) => {
     const terrain = state.board.tiles.find((t) => t.id === tileId);
     return `${terrain.resource} ${terrain.number || "-"}`;
   }).join(" / ")}`;
-  return `Path ${Number(id.slice(1)) + 1}`;
+  return edge ? `Path ${Number(id.slice(1)) + 1} · ${edge.adjacentTiles.map((tileId) => {
+    const terrain = state.board.tiles.find((tile) => tile.id === tileId);
+    return `${terrain.resource} ${terrain.number || ""}`;
+  }).join(" / ")}` : `Path ${Number(id.slice(1)) + 1}`;
 }
 
 function renderDevelopment() {
@@ -911,37 +953,10 @@ function renderWelcomeMap() {
   </svg>`;
 }
 
-function setChoice(node, id, key, selected) {
-  const active = !presence.pingMode && selected?.key === key && selected.ids.includes(id);
-  node.setAttribute("class", active ? "map-choice" : "map-static");
-  for (const attribute of ["role", "tabindex", "data-place", "aria-label"]) node.removeAttribute(attribute);
-  if (active) {
-    node.setAttribute("role", "button");
-    node.setAttribute("tabindex", "0");
-    node.setAttribute("data-place", id);
-    node.setAttribute("aria-label", `Place ${selected.label} ${id}`);
-  }
-  return active;
-}
-
-elements.board.addEventListener("click", (event) => {
-  const node = event.target.closest("[data-place]");
-  const selected = placement();
-  if (!node || !selected || presence.pingMode || suppressMapClick) return;
-  action({ type: selected.type, [selected.key]: node.dataset.place });
-});
-elements.board.addEventListener("keydown", (event) => {
-  if (!["Enter", " "].includes(event.key) || presence.pingMode) return;
-  const node = event.target.closest("[data-place]");
-  const selected = placement();
-  if (!node || !selected) return;
-  event.preventDefault();
-  action({ type: selected.type, [selected.key]: node.dataset.place });
-});
-
 function renderBoard() {
   if (!state) return;
   if (!state.board) {
+    boardPlacement.reset();
     elements.board.innerHTML = `<text x="0" y="0" text-anchor="middle" fill="#e7dfc4" font-family="Georgia,serif" font-size="24">Your island is being prepared.</text>`;
     elements["board-prompt"].textContent = "The host will start when everyone is here.";
     return;
@@ -974,13 +989,14 @@ function renderBoard() {
         <g class="port-glyph" transform="translate(${p.x - 25} ${p.y - 10}) scale(.65)">${art.glyph(resource || "cards")}</g>
         <text class="port-label" x="${p.x + 11}" y="${p.y + 5}">${resource ? "2:1" : "3:1"}</text></g>`;
     }).join("");
-    elements.board.innerHTML = `<g id="map-scene"><g class="ocean-decoration">${coast}</g><g id="terrain-layer">${board.tiles.map(terrainMarkup).join("")}</g><g id="port-layer">${ports}</g><g id="robber-layer"></g><g id="roads-layer"></g><g id="buildings-layer"></g></g>`;
+    elements.board.innerHTML = `<g id="map-scene"><g class="ocean-decoration">${coast}</g><g id="terrain-layer">${board.tiles.map(terrainMarkup).join("")}</g><g id="port-layer">${ports}</g><g id="robber-layer"></g><g id="roads-layer"></g><g id="buildings-layer"></g><g id="placement-layer"></g></g>`;
     initPanzoom();
     panzoom.reset({ animate: false });
   }
   for (const tile of board.tiles) {
     const node = elements.board.querySelector(`[data-tile="${tile.id}"]`);
-    setChoice(node, tile.id, "tileId", selected);
+    node.setAttribute("class", "map-static");
+    for (const attribute of ["role", "tabindex", "data-place", "aria-label"]) node.removeAttribute(attribute);
     node.classList.toggle("blocked-tile", tile.robber);
     if (presence.pingMode) {
       node.setAttribute("class", "map-ping-target");
@@ -996,24 +1012,21 @@ function renderBoard() {
   const edges = board.edges.map((edge) => {
     const a = point(vertices.get(edge.vertices[0]));
     const b = point(vertices.get(edge.vertices[1]));
-    const active = !presence.pingMode && selected?.key === "edgeId" && selected.ids.includes(edge.id);
-    return `<g data-edge="${edge.id}" class="${active ? "map-choice" : "map-static"}" ${active ? `role="button" tabindex="0" aria-label="Place ${selected.label} ${edge.id}" data-place="${edge.id}"` : ""}>
-      <line class="edge-hit ${active ? "edge-available" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>
-      ${active ? `<line class="edge-target" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>` : ""}
+    return `<g data-edge="${edge.id}" class="map-static">
       ${edge.road ? `<g class="piece-road" stroke-linecap="round"><line stroke="#29382c" stroke-width="15" x1="${a.x}" y1="${a.y + 4}" x2="${b.x}" y2="${b.y + 4}"/><line stroke="${player(edge.road.playerId).color}" stroke-width="13" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><line stroke="#fff6d5" opacity=".3" stroke-width="2.5" x1="${a.x - 1}" y1="${a.y - 3}" x2="${b.x - 1}" y2="${b.y - 3}"/></g>` : ""}
     </g>`;
   }).join("");
   const structures = board.vertices.map((vertex) => {
     const p = point(vertex);
-    const active = !presence.pingMode && selected?.key === "vertexId" && selected.ids.includes(vertex.id);
     const shape = vertex.structure ? `<g transform="translate(${p.x} ${p.y})">${art.building(vertex.structure.kind, player(vertex.structure.playerId).color)}</g>` : "";
-    return `<g data-vertex="${vertex.id}" class="${active ? "map-choice" : "map-static"}" ${active ? `role="button" tabindex="0" aria-label="Place ${selected.label} ${vertex.id}" data-place="${vertex.id}"` : ""}><circle class="vertex-hit ${active ? "vertex-preview" : ""}" cx="${p.x}" cy="${p.y}" r="17"/>${active && !shape ? `<circle class="vertex-dot" cx="${p.x}" cy="${p.y}" r="3"/>` : ""}${shape}</g>`;
+    return `<g data-vertex="${vertex.id}" class="map-static">${shape}</g>`;
   }).join("");
   elements.board.querySelector("#roads-layer").innerHTML = edges;
   elements.board.querySelector("#buildings-layer").innerHTML = structures;
+  boardPlacement.render();
   presence.render();
   elements["board-prompt"].textContent = presence.pingMode ? "Point mode: tap a spot. Turn Point off to build." : state.phase === "lobby" ? "A shared preview. Pick your favourite starting spots." : selected
-    ? `Choose a highlighted ${selected.label}.${state.freeRoadsRemaining ? ` ${state.freeRoadsRemaining} free remaining.` : ""}`
+    ? `Tap the board to preview a ${selected.label}.${state.freeRoadsRemaining ? ` ${state.freeRoadsRemaining} free remaining.` : ""}`
     : state.winnerId ? "The expedition is complete." : mine() ? "Choose an action from the side panel." : `Waiting for ${player(state.currentPlayerId)?.name}.`;
 }
 

@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { createGameServer } = require("../server");
 const { plan } = require("./strategy.cjs");
-const { perform } = require("./ui.cjs");
+const { perform, previewPlacement } = require("./ui.cjs");
 
 function randomSeed(seed) {
   return () => {
@@ -79,7 +79,8 @@ for (const count of [3, 4, 5, 6]) {
         const next = await page.evaluate(() => state);
         const move = plan(next);
         if (i === 0) {
-          await page.locator(`[data-place="${move.vertexId}"]`).click();
+          await previewPlacement(page, move.vertexId);
+          await page.locator("#confirm-placement").click();
           await page.waitForFunction((revision) => !busy && state.revision > revision, next.revision);
         } else if (i === 1) {
           const edge = next.board.edges.find((edge) => {
@@ -88,7 +89,8 @@ for (const count of [3, 4, 5, 6]) {
             const b = next.board.vertices.find((v) => v.id === edge.vertices[1]);
             return a.x !== b.x;
           });
-          await page.locator(`[data-place="${edge.id}"]`).click();
+          await previewPlacement(page, edge.id);
+          await page.locator("#confirm-placement").click();
           await page.waitForFunction((revision) => !busy && state.revision > revision, next.revision);
         } else await perform(page, move);
         view = await page.evaluate(() => state);

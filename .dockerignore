@@ -6,6 +6,7 @@
 !game.js
 !server.js
 !development-history.js
+!placement-undo.js
 !storage
 !storage/**
 !public

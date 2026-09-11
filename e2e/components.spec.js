@@ -6,6 +6,7 @@ const http = require("node:http");
 const path = require("node:path");
 const { Server } = require("socket.io");
 const { createRoom, addPlayer, startGame, applyAction, publicState } = require("../game");
+const { previewPlacement } = require("./ui.cjs");
 
 let server;
 let io;
@@ -133,36 +134,57 @@ test("resource trade controls use illustrated keyboard-operable choices, not nat
   await page.locator("#trade-section").screenshot({ path: testInfo.outputPath("trading-post.png") });
 });
 
-test("map-location chooser supports search, arrows, selection, and Escape without placing a piece", async ({ page }) => {
+test("board choices support keyboard preview and Escape without placing a piece", async ({ page }) => {
   await story(page, fixture("setup"));
-  await page.locator("#location-select-trigger").click();
-  await page.locator("#location-select-filter").fill("Junction 2 ");
-  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#location-select-trigger")).toHaveCount(0);
+  await expect(page.locator('#placement-layer [tabindex="0"]')).toHaveCount(1);
+  await page.locator('#placement-layer [tabindex="0"]').focus();
+  await page.keyboard.press("ArrowRight");
+  const selectedId = await page.evaluate(() => document.activeElement.dataset.place);
   await page.keyboard.press("Enter");
-  expect(await page.evaluate(() => GameControls.read("location-select"))).toBe("v1");
-  await expect(page.locator("#location-select-trigger")).toHaveAttribute("aria-expanded", "false");
-  await page.locator("#location-select-trigger").click();
+  expect(await page.evaluate(() => boardPlacement.selection.id)).toBe(selectedId);
+  await expect(page.locator("#placement-toolbar")).toBeVisible();
+  await expect(page.locator("#confirm-placement")).toBeEnabled();
   await page.keyboard.press("Escape");
-  await expect(page.locator(".choice-popup")).toHaveCount(0);
-  await expect(page.locator("#location-select-trigger")).toBeFocused();
-  await page.locator("#location-select-trigger").click();
-  await page.keyboard.press("Tab");
-  await expect(page.locator("#place-location")).toBeFocused();
+  await expect(page.locator("#placement-toolbar")).not.toBeVisible();
+  await expect(page.locator(`[data-place="${selectedId}"]`)).toBeFocused();
   expect(await page.evaluate(() => state.setupNeedsRoad)).toBe(false);
 });
 
-test("location chooser survives the rail scroll that accompanies opening it", async ({ page }) => {
+test("choosing a build piece with the keyboard moves focus directly onto its legal board targets", async ({ page }) => {
+  await story(page);
+  await page.locator('[data-build="city"]').focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator('#placement-layer [tabindex="0"]')).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#placement-title")).toContainText("city");
+  await expect(page.locator("#confirm-placement")).toBeEnabled();
+});
+
+test("point mode has an obvious return to placement and cannot silently hide the board choices", async ({ page }) => {
   await story(page, fixture("setup"));
-  await page.locator(".action-panel").evaluate((node) => { node.style.maxHeight = "350px"; });
-  await page.locator("#location-select-trigger").click();
-  await expect(page.locator(".choice-popup")).toBeVisible();
-  await page.locator(".action-panel").evaluate((node) => {
-    node.scrollTop += 12;
-    node.dispatchEvent(new Event("scroll"));
+  await page.locator("#ping-mode").click();
+  await expect(page.locator("#placement-layer [data-place]")).toHaveCount(0);
+  await expect(page.locator("#placement-directions")).toContainText("pointing, not placing");
+  await page.locator("#resume-placement").click();
+  const id = await page.evaluate(() => boardPlacement.targets[0].id);
+  await previewPlacement(page, id);
+  await expect(page.locator("#placement-toolbar")).toBeVisible();
+  expect(await page.evaluate(() => state.setupNeedsRoad)).toBe(false);
+});
+
+test("the admin automatically leaves point mode when their own setup turn arrives", async ({ page }) => {
+  const view = fixture("setup");
+  expect(view.viewerId).toBe(view.hostId);
+  await story(page, view);
+  await page.locator("#ping-mode").click();
+  await page.evaluate(() => {
+    const next = structuredClone(state);
+    state = { ...state, currentPlayerId: state.players.find((player) => player.id !== state.viewerId).id };
+    applyState(next);
   });
-  await expect(page.locator(".choice-popup")).toBeVisible();
-  await page.locator('.choice-popup [data-option="v1"]').click();
-  expect(await page.evaluate(() => GameControls.read("location-select"))).toBe("v1");
+  await expect(page.locator("#ping-mode")).toHaveAttribute("aria-pressed", "false");
+  expect(await page.locator("#placement-layer [data-place]").count()).toBeGreaterThan(0);
 });
 
 test("resource counters respect limits and exact discard selection", async ({ page }) => {

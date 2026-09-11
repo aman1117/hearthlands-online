@@ -2,6 +2,9 @@
 
 const crypto = require("node:crypto");
 const { emptyProgressCounts, recordProgressPlay, revealedDevelopment } = require("./development-history");
+const {
+  capturePlacement, recordPlacement, invalidatePlacementUndo, preserveAfterAction, undoOpportunity, undoLatestPlacement,
+} = require("./placement-undo");
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 const COLORS = ["#de5b43", "#2d82c7", "#f2b84b", "#6d9f4f", "#8357a5", "#20a398"];
@@ -195,6 +198,7 @@ const PUBLIC_EVENT_FIELDS = {
   bonusChanged: ["bonus", "fromId", "toId", "points"],
   gameFinished: ["winnerId", "reason", "points"],
   playerResigned: ["resourceCount", "developmentCount", "roadCount", "settlementCount", "cityCount"],
+  placementUndone: ["placementType", "targetId", "count"],
   legacy: [],
 };
 const isRecord = (value) => value !== null && typeof value === "object" &&
@@ -348,7 +352,7 @@ function shuffleMap(room, actorId, expectedMapVersion, random = Math.random) {
 function createRoom(hostName) {
   const room = {
     code: "", hostId: "", phase: "lobby", revision: 0, mapVersion: 0, players: [], board: null,
-    turnIndex: 0, primaryIndex: 0, turnRole: "primary", turnNumber: 0,
+    turnIndex: 0, primaryIndex: 0, turnRole: "primary", turnNumber: 0, placementUndoJournal: null,
     setupRound: 0, setupNeedsRoad: false, lastSetupVertex: null,
     dice: null, mustMoveRobber: false, pendingDiscards: {}, robberVictims: [],
     robberReturnPhase: null, freeRoadsRemaining: 0, freeRoadsReturnPhase: null,
@@ -412,6 +416,7 @@ function startGame(room, actorId, random = Math.random) {
   room.primaryIndex = 0;
   room.setupRound = 0;
   room.setupNeedsRoad = false;
+  invalidatePlacementUndo(room);
   appendLog(room, `${currentPlayer(room).name} begins the first settlement round.`, {
     type: "gameStarted", actorId,
     data: { playerCount: players.length, boardPlayerCount: expanded ? 6 : 4, firstPlayerId: currentPlayer(room).id },
@@ -539,13 +544,13 @@ function publicPoints(room, player) {
     (room.longestRoadHolderId === player.id ? 2 : 0) +
     (room.largestArmyHolderId === player.id ? 2 : 0);
 }
-function updateScores(room) {
+function updateScores(room, tieHolders = null) {
   if (!room.board) return;
   const previousRoad = room.longestRoadHolderId ?? null;
   const previousArmy = room.largestArmyHolderId ?? null;
   for (const player of room.players) player.longestRoad = player.resigned ? 0 : longestRoad(room, player.id);
-  room.longestRoadHolderId = awardHolder(room, "longestRoad", 5, room.longestRoadHolderId);
-  room.largestArmyHolderId = awardHolder(room, "knightsPlayed", 3, room.largestArmyHolderId);
+  room.longestRoadHolderId = awardHolder(room, "longestRoad", 5, tieHolders ? tieHolders.longestRoadHolderId : room.longestRoadHolderId);
+  room.largestArmyHolderId = awardHolder(room, "knightsPlayed", 3, tieHolders ? tieHolders.largestArmyHolderId : room.largestArmyHolderId);
   for (const player of room.players) {
     player.points = player.resigned ? 0 : publicPoints(room, player) +
       player.developmentCards.filter((card) => card.type === "victoryPoint").length;
@@ -564,6 +569,7 @@ function updateScores(room) {
   }
 }
 function finishGame(room, winnerId, reason) {
+  invalidatePlacementUndo(room);
   room.winnerId = winnerId;
   room.winReason = reason;
   room.phase = "finished";
@@ -1015,7 +1021,17 @@ function executeAction(room, actorId, action, random) {
   }
   if (!["offerTrade", "respondTrade", "cancelTrade", "discard"].includes(action.type)) assertTurn(room, actorId);
   let result;
+  let restoredAwards = null;
   switch (action.type) {
+    case "undoPlacement": {
+      const undone = undoLatestPlacement(room, actorId, action.placementId);
+      restoredAwards = undone.awards;
+      appendLog(room, `${player.name} undid the ${undone.label.slice(5).toLowerCase()} at ${undone.targetId}.`, {
+        type: "placementUndone", actorId,
+        data: { placementType: undone.type, targetId: undone.targetId, count: 1 },
+      });
+      break;
+    }
     case "setupSettlement": placeSetupSettlement(room, player, action.vertexId); break;
     case "setupRoad": placeSetupRoad(room, player, action.edgeId); break;
     case "roll": result = rollDice(room, player, random); break;
@@ -1051,7 +1067,7 @@ function executeAction(room, actorId, action, random) {
       break;
     default: throw new Error("Unknown game action.");
   }
-  updateScores(room);
+  updateScores(room, restoredAwards);
   checkWinner(room);
   return result;
 }
@@ -1070,7 +1086,10 @@ function commitState(target, source) {
 }
 function applyAction(room, actorId, action, random = Math.random) {
   const next = structuredClone(room);
+  const placement = capturePlacement(next, actorId, action);
   const result = executeAction(next, actorId, action, random);
+  if (placement) recordPlacement(next, placement);
+  else if (!preserveAfterAction(action)) invalidatePlacementUndo(next);
   commitState(room, next);
   return result;
 }
@@ -1082,6 +1101,7 @@ function resignPlayer(room, actorId, random = Math.random) {
   const original = activePlayers(room).find((player) => player.id === actorId);
   if (!original) throw new Error("You are not an active player in this room.");
   const next = structuredClone(room);
+  invalidatePlacementUndo(next);
   const player = next.players.find((candidate) => candidate.id === actorId);
   const wasCurrent = currentPlayer(next)?.id === actorId;
   const wasSetup = next.phase === "setup";
@@ -1174,13 +1194,14 @@ function legalActions(room, viewerId) {
     roadEdges: [], settlementVertices: [], cityVertices: [], robberTiles: [],
     canRoll: false, canEndTurn: false, canBuyDevelopment: false,
     playableCardIds: [], canBankTrade: false, canOfferTrade: false, canFinishFreeRoads: false,
-    canShuffleMap: false, canResign: false,
+    canShuffleMap: false, canResign: false, canUndoPlacement: false,
   };
   const player = activePlayers(room).find((candidate) => candidate.id === viewerId);
   if (player && room.phase === "lobby" && !room.winnerId) {
     legal.canShuffleMap = room.hostId === viewerId;
   }
   if (!player || !room.board || room.winnerId || ["finished", "lobby"].includes(room.phase)) return legal;
+  legal.canUndoPlacement = undoOpportunity(room, viewerId) !== null;
   legal.canResign = RESIGN_PHASES.includes(room.phase);
   const active = currentPlayer(room)?.id === viewerId;
   const actionPhase = room.phase === "action" && !room.freeRoadsRemaining;
@@ -1237,6 +1258,7 @@ function publicState(room, viewerId) {
     mapVersion: room.mapVersion ?? 0,
     boardPlayerCount: (room.board ? room.board.tiles.length === 30 : room.players.length > 4) ? 6 : 4,
     activePlayerCount: players.length,
+    undoPlacement: undoOpportunity(room, viewerId),
     departedPlayers: room.players.filter((player) => player.resigned).map((player) => ({
       id: player.id, name: player.name, color: player.color, resignedAt: player.resignedAt ?? null,
     })),

@@ -7,7 +7,7 @@ const path = require("node:path");
 const { createRoom, addPlayer, startGame, applyAction, publicState } = require("../game");
 const { createGameServer } = require("../server");
 const { plan } = require("./strategy.cjs");
-const { choose } = require("./ui.cjs");
+const { choose, perform } = require("./ui.cjs");
 
 async function clickAndWait(page, selector) {
   const revision = await page.evaluate(() => state.revision);
@@ -150,16 +150,14 @@ test("all development-card dialogs resolve through browser controls with one car
       await expect(page.locator("#development-dialog")).not.toBeVisible();
       if (type === "roadBuilding") {
         for (let road = 0; road < 2; road++) {
-          await expect(page.locator("#place-location")).toBeEnabled();
-          await clickAndWait(page, "#place-location");
+          await perform(page, { type: "buildRoad", edgeId: await page.evaluate(() => state.legal.roadEdges[0]) });
         }
         expect(await page.evaluate(() => state.freeRoadsRemaining)).toBe(0);
       }
       if (type === "knight") {
         const view = await page.evaluate(() => state);
         const move = plan(view);
-        await choose(page, "location-select", move.tileId);
-        await clickAndWait(page, "#place-location");
+        await perform(page, move);
         if (await page.evaluate(() => state.phase === "steal")) {
           await clickAndWait(page, ".steal-target:first-of-type");
         }
