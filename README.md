@@ -208,6 +208,54 @@ docker compose up --build
 
 Compose uses a separate PostgreSQL service and persistent named volumes. It does not touch existing application containers or databases. Do not use destructive volume-removal commands. A health endpoint is available at `/health`. Configure TLS termination before internet exposure.
 
+### Azure deployment
+
+Host the frontend and Socket.IO backend together in one **Azure Container App**, backed by a dedicated PostgreSQL database. Vercel Functions now support WebSockets, but connections have a maximum duration and future connections can reach another function instance. This game's single-coordinator design fits a continuously running container better; splitting the frontend adds another origin/deployment without improving the game server.
+
+`infra/main.bicep` reuses these resources in subscription `e8920202-01dd-4705-a790-187313cdde20`:
+
+| Resource | Use |
+|---|---|
+| `growth-tracker-rg/growth-tracker-env` | Existing Container Apps environment in Central India |
+| `growth-tracker-rg/growthtrackeracr` | Existing registry; separate `hearthlands-online` image repository |
+| `aman/aman` PostgreSQL server | Existing server, **only after authorized credentials and a dedicated game database are available** |
+| Resource group `aman` | New `hearthlands-online` app and its image-pull identity |
+
+The template creates only the game app, a managed identity, and an `AcrPull` assignment. It does not deploy or modify the PostgreSQL server, existing apps, environment, registry settings, or firewall. Image pulls use managed identity rather than shared registry passwords. HTTPS-only ingress supports WebSockets on port 3000. One 0.25-vCPU/0.5-GiB replica stays running; do not enable autoscaling.
+
+**Cost:** the new running replica and its logs incur usage charges, even when nobody is playing. The existing registry, environment, and database are reused rather than creating duplicate services. Long-lived game connections can result in active rather than idle billing. This is not a free or highly available multi-instance deployment.
+
+**Database prerequisite:** use an authorized account to create a dedicated `hearthlands` database and least-privileged application login. Keep its connection string outside Git and use verified TLS. Do not reuse an unrelated application's tables, reset the server password, change shared authentication, or deploy with a dummy connection string. A read-only `npm run db:check` must succeed before deployment. The container's temporary filesystem is not a substitute for PostgreSQL.
+
+To build a release without installing Docker locally:
+
+```powershell
+az acr build --subscription e8920202-01dd-4705-a790-187313cdde20 `
+  --resource-group growth-tracker-rg --registry growthtrackeracr `
+  --image hearthlands-online:<unique-release-tag> --platform linux/amd64 .
+```
+
+The Docker build context is an allowlist: saved games, credentials, tests, local databases, and Git history are excluded. The image includes a build-time server-module load check. Deploy the resulting image by immutable digest.
+
+Run provider-level what-if before an **incremental** deployment:
+
+```powershell
+az deployment group what-if --subscription e8920202-01dd-4705-a790-187313cdde20 `
+  --resource-group aman --template-file infra\main.bicep `
+  --parameters image=<registry-image-at-sha256-digest> revisionSuffix=<unique-release> `
+  --validation-level Provider
+
+az deployment group create --subscription e8920202-01dd-4705-a790-187313cdde20 `
+  --resource-group aman --mode Incremental --template-file infra\main.bicep `
+  --parameters image=<registry-image-at-sha256-digest> revisionSuffix=<unique-release>
+```
+
+Azure CLI prompts for the omitted secure `databaseUrl` parameter; do not place a real password in a command, committed parameter file, or deployment output. The template's `gameUrl` output is the HTTPS address. A successful what-if with a placeholder secret is **not** a working database connection or a completed deployment.
+
+**Existing local games:** deployment does not automatically copy them. Preserve the local PostgreSQL cluster and private resume keys. Before a cutover, stop new local gameplay, take a consistent backup of all room snapshots **and full event history**, and import into an empty, game-owned cloud destination. Preserve request receipts, sequences, keys, and original backups; never overwrite existing cloud rows. Changing the browser origin does not transfer localStorage: players need their private resume keys at the new URL. Do not run two independently writable copies of the same migrated game.
+
+**Updates and rollback:** revisions use multiple-revision mode only to permit explicit stop-before-start releases. Keep exactly **one active revision**; do not use blue/green overlap or traffic splitting against this database. Before an upgrade, record the healthy revision/image and back up the game, then deactivate that revision (this stops compute, not data), deploy the next one, and confirm `/health`, WebSocket connections, and resumed game state. If it fails, deactivate the failed revision before reactivating the previous compatible revision. Do not delete revisions, databases, schemas, registry images, or storage as a rollback mechanism. Expect a short reconnect window during replacement.
+
 ## Automated checks
 
 ```powershell
