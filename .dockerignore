@@ -1,0 +1,11 @@
+node_modules
+data
+test
+e2e
+test-results
+playwright-report
+.git
+.env
+.env.*
+.local-postgres
+.staging

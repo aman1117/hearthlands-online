@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123440">
+    <title>Hearthlands Online</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/components.css">
+    <link rel="stylesheet" href="/finish.css">
+    <link rel="preload" href="/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
+  </head>
+  <body>
+    <svg id="art-library" class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="grain"></div>
+    <main id="landing" class="landing">
+      <header class="landing-header">
+        <a class="wordmark" href="/" aria-label="Hearthlands home"><span class="brand-seal" data-icon="settlement"></span><span>Hearthlands<small>THE ONLINE TABLETOP</small></span></a>
+        <span class="landing-tag">A place at the table for everyone.</span>
+      </header>
+      <section class="hero">
+        <p class="eyebrow">YOUR FRIENDS. YOUR ISLAND. YOUR NEXT GREAT GAME.</p>
+        <h1>Build a little.<br>Trade a lot.<br><em>Stay awhile.</em></h1>
+        <p class="lede">A beautifully crafted island, a handful of resources, and your favourite people. The table is ready.</p>
+        <div class="rule-chips">
+          <span><b>3–6</b> players</span>
+          <span>No accounts</span>
+          <span>Free to play</span>
+        </div>
+        <div id="hero-map" aria-hidden="true"></div>
+      </section>
+      <section class="entry-card">
+        <div class="entry-heading"><span class="mini-seal" data-icon="crown"></span><p class="eyebrow">PULL UP A CHAIR</p><h2>Your next game<br>starts here.</h2></div>
+        <label for="player-name">Your name</label>
+        <input id="player-name" maxlength="20" autocomplete="nickname" placeholder="What should we call you?">
+        <button id="create-room" class="primary-button">Create a private table <span aria-hidden="true">→</span></button>
+        <div class="or"><span>or join friends</span></div>
+        <div class="join-row">
+          <input id="room-code" aria-label="Room code" maxlength="6" autocomplete="off" placeholder="ROOM CODE">
+          <button id="join-room" class="secondary-button">Join table</button>
+        </div>
+        <p id="landing-error" class="error" role="alert"></p>
+        <button id="resume-game" class="text-button hidden">Resume your saved game</button>
+        <section id="saved-games-section" class="saved-games-section hidden">
+          <div class="section-heading"><h2>Saved tables</h2><span>PRIVATE TO THIS BROWSER</span></div>
+          <div id="saved-games"></div>
+        </section>
+        <details class="resume-details">
+          <summary>Resume on another device</summary>
+          <label for="resume-key">Private resume key</label>
+          <input id="resume-key" type="password" autocomplete="off" placeholder="Paste your private key">
+          <button id="import-session" class="secondary-button">Resume seat</button>
+        </details>
+        <p class="small-note entry-note"><span data-icon="lock"></span>Private rooms. Automatically saved. Made for game night.</p>
+      </section>
+      <footer class="landing-footer">An independent island-building game. Original artwork. Familiar strategy.<span>SETTLE / TRADE / BUILD</span></footer>
+    </main>
+
+    <main id="game" class="game hidden">
+      <header class="game-header">
+        <div class="compact-brand">
+          <span class="brand-seal" data-icon="settlement"></span>
+          <div><strong>Hearthlands</strong><small>PRIVATE TABLE <button id="copy-code" title="Copy room code"></button></small></div>
+        </div>
+        <div id="turn-banner" class="turn-banner" role="status"></div>
+        <div class="header-tools">
+          <button id="sound-toggle" class="icon-button" aria-label="Enable sound" aria-pressed="false" title="Optional turn and ping sounds"><span data-icon="sound"></span></button>
+          <button id="fullscreen-toggle" class="icon-button" aria-label="Enter fullscreen" title="Fullscreen"><span data-icon="expand"></span></button>
+          <button id="rules-button" class="icon-button" aria-label="Show game guide" title="Rules and controls">?</button>
+        </div>
+      </header>
+
+      <div class="game-shell">
+        <aside class="players-panel">
+          <div class="section-heading roster-heading"><h2>Players</h2><span id="connected-count" class="count-pill"></span></div>
+          <div id="players"></div>
+          <div id="departed-players" class="departed-players hidden"></div>
+          <div id="bank-status" class="bank-status"></div>
+          <div class="room-tools">
+            <button id="copy-invite" class="invite-button">Invite friends <span aria-hidden="true">↗</span></button>
+            <p id="connection-status" class="small-note connection-status" role="status">Connecting...</p>
+            <details class="room-settings"><summary>Room &amp; session</summary>
+              <button id="copy-resume" class="text-button">Copy private resume key</button>
+              <button id="leave-screen" class="text-button">Save &amp; exit for now</button>
+              <button id="resign-game" class="text-button danger-link hidden">Request removal</button>
+              <button id="cancel-removal-request" class="text-button hidden">Cancel removal request</button>
+              <button id="transfer-admin" class="text-button hidden">Transfer admin role</button>
+              <p class="small-note">Save &amp; exit keeps your seat and holdings. Only the admin can remove players. Admins must choose a successor before leaving. Copy your private resume key before closing an Incognito/private window or moving to another device.</p>
+            </details>
+          </div>
+        </aside>
+
+        <section class="board-panel">
+          <div class="table-toolbar">
+            <div class="map-caption"><span class="eyebrow">THE ISLAND</span><strong id="map-variant">Preparing your table</strong></div>
+            <div class="presence-tools">
+              <button id="toggle-pointers" class="tool-button" aria-pressed="true" title="Share and see player cursors"><span data-icon="pointer"></span><span>Cursors</span></button>
+              <button id="ping-mode" class="tool-button" aria-pressed="false" title="Point mode (P). Alt-click also pings the map."><span data-icon="ping"></span><span>Point</span><kbd>P</kbd></button>
+            </div>
+          </div>
+          <div class="map-frame">
+            <div class="map-tools" aria-label="Map controls">
+              <button id="zoom-out" class="map-button" aria-label="Zoom out">−</button>
+              <button id="zoom-reset" class="map-button" title="Fit island to screen">100%</button>
+              <button id="zoom-in" class="map-button" aria-label="Zoom in">+</button>
+            </div>
+            <div class="map-scroll" id="map-scroll"><div id="map-transform"><svg id="board" viewBox="-650 -620 1300 1240" role="group" aria-label="Hearthlands game board"></svg></div></div>
+            <div class="compass" aria-hidden="true"><span>N</span>✧</div>
+            <div id="map-tip" class="map-tip">Move your cursor to point. Alt-click to ping.</div>
+            <div id="board-prompt" class="board-prompt"></div>
+          </div>
+          <section id="hand-section" class="hand-dock hidden">
+            <div class="hand-heading"><span class="eyebrow">PRIVATE HAND</span><h2>Your resources</h2><span id="hand-total"></span><span class="private-label"><span data-icon="lock"></span>Hidden from opponents</span></div>
+            <div id="resources" class="resources"></div>
+          </section>
+          <div id="lobby-footer" class="lobby-footer"><span data-icon="shuffle"></span><div><strong>Choose the starting map.</strong><p>The host can shuffle before the game. Everyone sees the same map.</p></div><span class="edition-label">3–6 PLAYERS</span></div>
+        </section>
+
+        <aside class="action-panel">
+          <section id="admin-panel" class="admin-panel hidden"><h2>Removal requests</h2><div id="admin-requests"></div></section>
+          <section id="lobby-controls" class="panel-section lobby-controls">
+            <p class="eyebrow">LOBBY</p>
+            <h2>Prepare the game</h2>
+            <p id="lobby-status" class="lobby-status" role="status"></p>
+            <div id="map-summary" class="map-summary"></div>
+            <button id="shuffle-map" class="secondary-button" disabled><span data-icon="shuffle"></span>Shuffle island</button>
+            <p id="shuffle-note" class="small-note">Only the host can shuffle. The map is locked once play begins.</p>
+            <button id="start-game" class="primary-button hidden">Begin game</button>
+          </section>
+          <section id="turn-guide" class="panel-section turn-guide hidden"><p id="turn-eyebrow" class="eyebrow"></p><h2 id="turn-title"></h2><p id="turn-help"></p><div id="phase-steps" class="phase-steps"></div></section>
+          <section id="required-action" class="panel-section hidden" aria-live="polite"></section>
+          <section id="winner-panel" class="panel-section hidden"></section>
+          <button id="rematch" class="primary-button rematch-button hidden">Play again</button>
+
+          <section id="actions-section" class="panel-section hidden">
+            <div class="section-heading"><h2>Build &amp; play</h2><span id="piece-supply" class="piece-supply"></span></div>
+            <div id="dice-area" class="dice-area"></div>
+            <div id="build-actions" class="build-grid"></div>
+            <div id="location-picker" class="location-picker hidden"></div>
+            <button id="end-turn" class="primary-button hidden">End turn</button>
+          </section>
+
+          <section id="development-section" class="panel-section hidden">
+            <div class="section-heading"><h2>Development</h2><span id="development-left"></span></div>
+            <button id="buy-development" class="action-button">Buy a card <small>1 sheep, 1 wheat, 1 ore</small></button>
+            <div id="development-cards"></div>
+          </section>
+
+          <section id="trade-section" class="panel-section hidden">
+            <details id="trade-details" open>
+              <summary>Trading post</summary>
+              <div class="trade-tabs">
+                <button class="trade-tab active" data-tab="bank">Bank</button>
+                <button class="trade-tab" data-tab="player">Player</button>
+              </div>
+              <div id="bank-trade" class="trade-form"></div>
+              <div id="player-trade" class="trade-form hidden"></div>
+            </details>
+          </section>
+
+          <section class="panel-section chronicle">
+            <div class="section-heading"><h2>Activity</h2><button id="open-history" class="history-button">Full history</button></div>
+            <div id="game-log" aria-live="polite"></div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" role="status"></div>
+    <section id="activity-notifications" class="activity-notifications" aria-live="polite" aria-label="Game updates"></section>
+    <section id="network-banner" class="network-banner hidden" role="status" aria-live="polite"><span id="network-message"></span><button id="retry-connection" type="button">Retry now</button></section>
+    <div id="presence-announcement" class="sr-only" role="status"></div>
+    <dialog id="rules-dialog">
+      <button id="close-rules" class="dialog-close" aria-label="Close">×</button>
+      <p class="eyebrow">Field guide</p>
+      <h2>How to unite the Hearthlands</h2>
+      <div class="rules-grid">
+        <article><strong>01</strong><h3>Found</h3><p>Place two settlements and roads in snake order. Your second settlement gathers starting resources.</p></article>
+        <article><strong>02</strong><h3>Gather</h3><p>Roll each turn. Settlements collect one resource from matching tiles; cities collect two.</p></article>
+        <article><strong>03</strong><h3>Build</h3><p>Connect roads, keep settlements two paths apart, and upgrade your settlements into cities.</p></article>
+        <article><strong>04</strong><h3>Trade</h3><p>Trade 4:1 with the bank, 3:1 at a generic port, or 2:1 at your matching resource port. Player trades must involve the active primary player. No gifts or matching resources on both sides.</p></article>
+        <article><strong>05</strong><h3>The robber</h3><p>On a seven, everyone holding over seven resources chooses half to discard, rounded down. After all discards, the roller moves the robber and chooses a neighboring opponent to steal one random resource from. Blocked tiles do not produce.</p></article>
+        <article><strong>06</strong><h3>Development</h3><p>Pay one sheep, wheat, and ore. Play one older card per activation, before rolling or during actions: Knight moves the robber; Road Building grants two roads; Year of Plenty takes two available resources; Monopoly takes one resource type from every opponent. Hidden victory cards can win immediately when bought.</p></article>
+        <article><strong>07</strong><h3>Bonuses</h3><p>The first unbroken road of at least five earns two points. A longer road takes the bonus; the holder keeps ties. Opponent settlements interrupt roads. Three played Knights earn Largest Army; a larger army takes its two points.</p></article>
+        <article><strong>08</strong><h3>Five or six</h3><p>The primary player rolls, trades, and builds. Then the player three seats clockwise takes actions without rolling or trading with players. Bank trading and development cards are allowed. Both markers then move one seat. Either active player can win.</p></article>
+        <article><strong>09</strong><h3>Point together</h3><p>Everyone can share their cursor, even when it is not their turn. Use Point mode (P) and click or tap the map to send a coloured ping. Alt-click works too. Point mode never places a piece. Turn Cursors off to hide and stop sharing cursor movements.</p></article>
+        <article><strong>10</strong><h3>Make it your table</h3><p>The host can shuffle the island in the lobby. Starting the game locks that exact preview. The board expands automatically when a fifth player joins. Use zoom, fullscreen, or the location selector for precise placement. Sound is optional and off by default.</p></article>
+      </div>
+      <p>Three or four players use 19 land tiles and 19 cards of each resource. Five or six use 30 land tiles and 24 of each. If production exceeds the bank, nobody receives that type unless just one player is affected; then they take what remains. A city replaces a settlement and returns that piece. You have 15 roads, 5 settlements, and 4 cities.</p>
+      <p><strong>Returning later:</strong> close your browser or use Save &amp; exit. Your seat, hand, and board position remain saved. Select the table under Saved tables to return, or use your private resume key on another device. A lost connection never resigns for you.</p>
+      <p><strong>Removal house rule:</strong> request removal from the admin; your holdings stay yours until approved. Only the admin may remove a player. The admin must explicitly choose another active player as successor before leaving. Going offline never transfers the admin role. Approved removal returns held resources and unplayed development cards and removes that player's roads and buildings. Used card effects are not undone. The island and supply size remain unchanged; survivors can continue, including two-player continuation.</p>
+      <p><strong>Development decks:</strong> three/four-player games contain 14 Knights, 5 Victory Points, and 2 each of Monopoly, Road Building, and Year of Plenty (25 total). Five/six-player games contain 20 Knights, 5 Victory Points, and 3 each of those progress cards (34 total).</p>
+      <p class="victory-note">Reach <strong>10 points on your own activation</strong> to win, including hidden victory cards. Victory is automatic.</p>
+      <p class="small-note">Uses the base game and 2025 paired-player extension mechanics. Does not include separate expansions such as Seafarers or Cities &amp; Knights. <a href="https://www.catan.com/understand-catan/game-rules" target="_blank" rel="noopener">Publisher rules reference</a>.</p>
+      <p class="small-note">Original Hearthlands artwork. Panzoom: <a href="/vendor/panzoom-LICENSE.txt" target="_blank" rel="noopener">MIT licence</a>. Self-hosted fonts: <a href="/fonts/cinzel-LICENSE.txt" target="_blank" rel="noopener">Cinzel</a> and <a href="/fonts/source-sans-3-LICENSE.txt" target="_blank" rel="noopener">Source Sans 3</a> (OFL).</p>
+    </dialog>
+    <dialog id="development-dialog">
+      <button id="close-development" class="dialog-close" aria-label="Close development card">×</button>
+      <h2 id="development-title"></h2>
+      <div id="development-options"></div>
+      <p class="dialog-network-status" role="status"></p>
+      <button id="play-development" class="primary-button">Play card</button>
+    </dialog>
+    <dialog id="resign-dialog" aria-labelledby="resign-title">
+      <p id="resign-eyebrow" class="eyebrow">LEAVING THE TABLE</p>
+      <h2 id="resign-title">Request removal?</h2>
+      <p id="resign-explanation"></p>
+      <div id="resign-summary" class="resign-summary"></div>
+      <p class="dialog-network-status" role="status"></p>
+      <div id="successor-field" class="succession-field hidden"></div>
+      <p class="small-note">On approved removal, resources return to the bank, unplayed development cards are shuffled into the deck, and your pieces are removed. Previously played effects remain.</p>
+      <label class="confirm-resign"><input id="resign-confirmed" type="checkbox"><span id="resign-confirmation-label">I want the admin to remove my seat.</span></label>
+      <div class="dialog-actions"><button id="cancel-resign" class="secondary-button">Keep my seat</button><button id="confirm-resign" class="danger-button" disabled>Request removal</button></div>
+      <p class="small-note">Just taking a break? Choose Keep my seat, then Save &amp; exit instead.</p>
+    </dialog>
+    <dialog id="admin-remove-dialog" aria-labelledby="admin-remove-title">
+      <p class="eyebrow">ADMIN ACTION</p><h2 id="admin-remove-title">Remove player?</h2>
+      <p id="admin-remove-details"></p>
+      <p class="small-note">This is permanent. Holdings are returned and pieces are removed so the remaining players can continue.</p>
+      <p class="dialog-network-status" role="status"></p>
+      <label class="confirm-resign"><input id="admin-remove-checked" type="checkbox"><span>I confirm removal of this player.</span></label>
+      <div class="dialog-actions"><button id="admin-remove-cancel" class="secondary-button">Keep player</button><button id="admin-remove-confirm" class="danger-button" disabled>Remove player</button></div>
+    </dialog>
+    <dialog id="admin-transfer-dialog" aria-labelledby="admin-transfer-title">
+      <p class="eyebrow">ADMIN HANDOVER</p><h2 id="admin-transfer-title">Choose the next admin</h2>
+      <div id="admin-transfer-choices"></div><p class="small-note">Exactly one player is admin. You remain a player after handing over the role.</p>
+      <div class="dialog-actions"><button id="admin-transfer-cancel" class="secondary-button">Cancel</button><button id="admin-transfer-confirm" class="primary-button">Transfer role</button></div>
+    </dialog>
+    <dialog id="history-dialog" aria-labelledby="history-title">
+      <button id="close-history" class="dialog-close" aria-label="Close activity history">×</button>
+      <p class="eyebrow">RECORDED TABLE ACTIVITY</p><h2 id="history-title">Game history</h2>
+      <p id="history-status" class="small-note" role="status"></p><div id="history-events"></div>
+      <button id="history-more" class="secondary-button">Load earlier events</button>
+    </dialog>
+    <dialog id="discard-dialog" aria-labelledby="discard-title">
+      <p class="eyebrow">A SEVEN WAS ROLLED</p>
+      <h2 id="discard-title">Choose the cards to return</h2>
+      <div class="discard-equation"><span><b id="discard-total">0</b>in your hand</span><i aria-hidden="true">−</i><span class="discard-return"><b id="discard-required">0</b>return to bank</span><i aria-hidden="true">=</i><span><b id="discard-keep">0</b>you keep</span></div>
+      <p class="discard-guidance">Select the resource cards you want to give up. <strong>Development cards do not count and stay with you.</strong></p>
+      <form id="discard-form">
+        <div id="discard-selection" class="resource-counters"></div>
+        <progress id="discard-progress" max="1" value="0" aria-label="Selected cards to return"></progress>
+        <p id="discard-count" role="status" aria-live="polite"></p>
+        <p class="dialog-network-status" role="status"></p>
+        <button id="submit-discard" type="submit" class="primary-button" disabled>Return cards to bank</button>
+        <button id="discard-view-board" type="button" class="text-button">View the board first — keep my selection</button>
+      </form>
+      <p class="small-note">The robber waits until every required player has returned their cards. Nothing is returned until you confirm.</p>
+    </dialog>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/vendor/panzoom.min.js"></script>
+    <script src="/tabletop.js"></script>
+    <script src="/presence.js"></script>
+    <script src="/components.js"></script>
+    <script src="/cards.js"></script>
+    <script src="/activity.js"></script>
+    <script src="/discard.js"></script>
+    <script src="/connection.js"></script>
+    <script src="/client.js"></script>
+  </body>
+</html>

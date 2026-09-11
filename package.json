@@ -1,0 +1,33 @@
+{
+  "name": "hearthlands-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "An original online hex-settlement strategy game for 3-6 players.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node scripts/run-tests.mjs",
+    "test:e2e": "playwright test",
+    "db:local": "node scripts/local-postgres.mjs",
+    "start:local-db": "node scripts/start-local.mjs",
+    "db:check": "node scripts/check-database.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@panzoom/panzoom": "4.6.2",
+    "dotenv": "17.4.2",
+    "express": "^5.1.0",
+    "pg": "8.23.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@fontsource-variable/cinzel": "5.3.0",
+    "@fontsource-variable/source-sans-3": "5.3.0",
+    "@playwright/test": "^1.63.0",
+    "embedded-postgres": "17.9.0-beta.17",
+    "socket.io-client": "^4.8.3"
+  }
+}
