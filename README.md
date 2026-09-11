@@ -275,6 +275,21 @@ Azure CLI prompts for the omitted secure `databaseUrl` parameter; do not place a
 
 **Updates and rollback:** revisions use multiple-revision mode only to permit explicit stop-before-start releases. Keep exactly **one active revision**; do not use blue/green overlap or traffic splitting against this database. Before an upgrade, record the healthy revision/image and back up the game, then deactivate that revision (this stops compute, not data), deploy the next one, and confirm `/health`, WebSocket connections, and resumed game state. If it fails, deactivate the failed revision before reactivating the previous compatible revision. Do not delete revisions, databases, schemas, registry images, or storage as a rollback mechanism. Expect a short reconnect window during replacement.
 
+For image-only releases, preserve the existing identity, access assignments, secrets and ingress settings with `az containerapp update`, rather than reprovisioning all resources:
+
+```powershell
+az containerapp revision deactivate --subscription e8920202-01dd-4705-a790-187313cdde20 `
+  --resource-group aman --name hearthlands-online --revision <current-revision>
+# Confirm the old revision is inactive, runningState=Stopped, replicas=0.
+# Retained NotRunning replica records are not live processes.
+az containerapp update --subscription e8920202-01dd-4705-a790-187313cdde20 `
+  --resource-group aman --name hearthlands-online `
+  --image <registry-image-at-sha256-digest> --revision-suffix <unique-release> `
+  --min-replicas 1 --max-replicas 1
+```
+
+Avoid **`az containerapp revision restart`** for this single-coordinator application: it can roll a replacement replica while the old process still owns the database lease. The old process can keep serving healthy responses while the replacement crash-loops, so a successful HTTP request alone does not prove replacement occurred. Use explicit deactivate/activate for a same-image restart, or deactivate/update for a release, and verify one healthy active revision and a newly started replica.
+
 ## Automated checks
 
 ```powershell
@@ -299,7 +314,7 @@ The Node suite covers rules and real Socket.IO clients, including saved position
 
 Component-only stories use explicit render fixtures. Integration tests drive real controls through Socket.IO; failure tests gate WebSocket frames rather than adding public testing endpoints. There is no production endpoint for injecting dice rolls, resources, or game positions.
 
-`e2e/deployment.spec.js` is opt-in: set `HEARTHLANDS_DEPLOYMENT_URL` to an HTTPS game URL to exercise real cloud play, WebSocket heartbeats, offline recovery, and the saved-table Resume control after reopening the browser. It creates a new test room and deliberately does not delete it. After restarting only the game revision, set `HEARTHLANDS_RECOVERY_FILE` to the generated private `cloud-recovery.json` artifact and run the cloud-process-restart case to verify all three saved players. Recovery artifacts contain only newly generated test-seat credentials, remain under ignored `test-results`, and must not be published.
+`e2e/deployment.spec.js` is opt-in: set `HEARTHLANDS_DEPLOYMENT_URL` to an HTTPS game URL to exercise real cloud play, direct placement/undo, WebSocket heartbeats, offline recovery, and the saved-table Resume control after reopening the browser. It creates a new test room and deliberately does not delete it. After an explicit stop/start or later deployment, set `HEARTHLANDS_RECOVERY_FILE` to the generated private `cloud-recovery.json` artifact and run the cloud-process-restart case to verify all three saved players. Recovery artifacts contain only newly generated test-seat credentials, remain under ignored `test-results`, and must not be published.
 
 ## Architecture
 
