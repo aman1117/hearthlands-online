@@ -147,6 +147,25 @@ test("a restored unfulfillable offer explains why acceptance is blocked without 
   await expect(page.locator("#decline-trade")).toBeEnabled();
 });
 
+test("PostgreSQL-style JSON key ordering never replaces unchanged trade response buttons", async ({ page }) => {
+  const view = fixture();
+  const sender = view.players.find((player) => player.id !== view.viewerId);
+  view.trade = { id: "jsonb-offer", fromId: sender.id, targetId: view.viewerId,
+    give: { wood: 1, brick: 0, sheep: 0, wheat: 0, ore: 0 },
+    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } };
+  await story(page, view);
+  await page.locator("#accept-trade").focus();
+  const unchanged = await page.evaluate(() => {
+    const original = document.getElementById("accept-trade");
+    const reverse = (object) => Object.fromEntries(Object.entries(object).reverse());
+    state.trade = reverse({ ...state.trade, give: reverse(state.trade.give), want: reverse(state.trade.want) });
+    render();
+    return document.getElementById("accept-trade") === original;
+  });
+  expect(unchanged).toBe(true);
+  await expect(page.locator("#accept-trade")).toBeFocused();
+});
+
 test("board choices support keyboard preview and Escape without placing a piece", async ({ page }) => {
   await story(page, fixture("setup"));
   await expect(page.locator("#location-select-trigger")).toHaveCount(0);

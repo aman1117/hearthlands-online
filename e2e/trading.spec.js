@@ -3,11 +3,12 @@ const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const crypto = require("node:crypto");
 const { createGameServer } = require("../server");
 const { createRoom, addPlayer, startGame, applyAction, publicState } = require("../game");
 const { choose, perform } = require("./ui.cjs");
 
-async function table(browser, { preRoll = false, shortRecipient = false } = {}) {
+async function table(browser, { preRoll = false, shortRecipient = false, postgres = false } = {}) {
   const { room, player: host } = createRoom("Rowan");
   addPlayer(room, "Mira"); addPlayer(room, "Ellis");
   startGame(room, host.id, () => .999);
@@ -29,7 +30,16 @@ async function table(browser, { preRoll = false, shortRecipient = false } = {}) 
   room.code = "TRADED"; room.updatedAt = Date.now();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "hearthlands-trade-"));
   fs.writeFileSync(path.join(dataDir, "TRADED.json"), JSON.stringify({ version: 2, room }));
-  let service = createGameServer({ dataDir, random: () => .1 });
+  const options = { dataDir, random: () => .1 };
+  if (postgres) {
+    const url = new URL(process.env.TEST_DATABASE_URL);
+    expect(["postgres:", "postgresql:"]).toContain(url.protocol);
+    expect(["127.0.0.1", "localhost", "[::1]"]).toContain(url.hostname);
+    expect(url.pathname).toBe("/hearthlands_test");
+    Object.assign(options, { databaseUrl: process.env.TEST_DATABASE_URL, databaseSsl: "disable",
+      databaseSchema: `hearthlands_trade_browser_${crypto.randomBytes(8).toString("hex")}` });
+  }
+  let service = createGameServer(options);
   const port = await service.listen();
   const contexts = [], pages = [], errors = [], wires = [];
   for (const player of room.players) {
@@ -66,7 +76,7 @@ async function table(browser, { preRoll = false, shortRecipient = false } = {}) 
   return { room, pages, wires, contexts, errors, card,
     read: () => service.storage.getRoom(room.code),
     history: () => service.storage.listEvents(room.code, { limit: 1000 }),
-    async restart() { await service.close(); service = createGameServer({ dataDir, random: () => .1 }); await service.listen(port); },
+    async restart() { await service.close(); service = createGameServer(options); await service.listen(port); },
     async close() { for (const context of contexts) await context.close(); await service.close(); fs.rmSync(dataDir, { recursive: true, force: true }); },
   };
 }
@@ -87,8 +97,9 @@ async function offer(t, give, want) {
 }
 function holdings(room) { return { bank: room.bank, players: room.players.map((player) => player.resources) }; }
 
-test("Accept survives a peer update between pointer down and pointer up", async ({ browser }) => {
-  const t = await table(browser);
+for (const postgres of [false, true]) test(`${postgres ? "PostgreSQL" : "SQLite"} Accept survives a peer update between pointer down and pointer up`, async ({ browser }) => {
+  test.skip(postgres && !process.env.TEST_DATABASE_URL, "Set the isolated loopback test database URL.");
+  const t = await table(browser, { postgres });
   try {
     await offer(t);
     const page = t.pages[1];

@@ -40,7 +40,10 @@ window.TradePanel = class TradePanel {
     const trade = state.trade;
     // Keep controls alive through routine state/presence updates so pointer presses and focus survive.
     // Replacing the actual offer replaces its controls: an in-progress click must not accept new terms.
-    const signature = JSON.stringify(trade);
+    const signature = trade ? JSON.stringify([
+      trade.id, trade.fromId, trade.targetId,
+      ...["give", "want"].map((side) => ["wood", "brick", "sheep", "wheat", "ore"].map((resource) => trade[side][resource] || 0)),
+    ]) : "null";
     if (signature !== this.offerSignature) {
       const previousId = this.tradeId;
       this.offerSignature = signature;
