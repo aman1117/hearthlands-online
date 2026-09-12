@@ -24,6 +24,41 @@ window.TradePanel = class TradePanel {
     if (state.freeRoadsRemaining) return "Finish placing free roads before trading.";
     return state.phase !== "action" ? "Trading is unavailable in this phase." : "";
   }
+  offerCard(trade, from, target, viewerId) {
+    const recipient = trade.targetId === viewerId;
+    const sender = trade.fromId === viewerId;
+    const party = recipient || sender;
+    const receive = recipient || !party ? trade.give : trade.want;
+    const give = recipient || !party ? trade.want : trade.give;
+    const side = (label, bundle, direction) => {
+      const total = ["wood", "brick", "sheep", "wheat", "ore"].reduce((sum, resource) => sum + (bundle[resource] || 0), 0);
+      return `<section class="offer-side offer-side-${direction}" data-trade-direction="${direction}" aria-label="${this.escape(label)}">
+        <div class="offer-side-heading"><h4>${this.escape(label)}</h4><span>${total} ${total === 1 ? "card" : "cards"}</span></div>
+        <ul class="trade-resource-list">${GameCards.tradeResources(bundle)}</ul>
+      </section>`;
+    };
+    return `<article id="trade-offer-card" class="trade-offer table-trade-card" aria-labelledby="trade-offer-title">
+      <header class="offer-heading"><span class="offer-seal" aria-hidden="true">${Tabletop.icon("cards")}</span>
+        <div><span class="offer-eyebrow">TRADING POST</span><h3 id="trade-offer-title">Trade offer</h3></div>
+        <span class="offer-badge">${recipient ? "For you" : sender ? "Your offer" : "At the table"}</span>
+      </header>
+      <div class="offer-participants" aria-label="${this.escape(`${from.name} offers ${target.name}`)}">
+        <span class="offer-player"><i style="--seat-color:${this.escape(from.color)}" aria-hidden="true"></i><strong>${sender ? "You" : this.escape(from.name)}</strong></span>
+        <span class="offer-to" aria-hidden="true">→</span>
+        <span class="offer-player"><i style="--seat-color:${this.escape(target.color)}" aria-hidden="true"></i><strong>${recipient ? "You" : this.escape(target.name)}</strong></span>
+      </div>
+      <div class="offer-exchange">
+        ${side(party ? "You receive" : `${from.name} gives`, receive, "receive")}
+        <div class="offer-divider" aria-hidden="true"><span>⇅</span></div>
+        ${side(party ? "You give" : `${target.name} gives`, give, "give")}
+      </div>
+      <footer class="offer-footer">
+        <p id="trade-response-status" class="trade-feedback" role="status"></p>
+        ${recipient ? '<div class="trade-response"><button id="decline-trade" class="action-button trade-decline">Decline</button><button id="accept-trade" class="primary-button trade-accept" aria-describedby="trade-response-status">Accept trade</button></div>' : ""}
+        ${sender ? '<button id="cancel-trade" class="secondary-button trade-cancel">Withdraw offer</button>' : ""}
+      </footer>
+    </article>`;
+  }
   render() {
     const state = this.getState();
     if (!state) { this.reset(); return; }
@@ -54,12 +89,7 @@ window.TradePanel = class TradePanel {
       const sender = trade?.fromId === state.viewerId;
       const offer = document.getElementById("current-trade");
       offer.innerHTML = trade && from && target
-        ? `<article class="trade-offer"><strong>${this.escape(from.name)} offers ${this.escape(target.name)}</strong>` +
-          `<p>${recipient ? "You receive" : "They receive"}: ${this.bundleText(recipient ? trade.give : trade.want)}<br>` +
-          `${recipient ? "You give" : "They give"}: ${this.bundleText(recipient ? trade.want : trade.give)}</p>` +
-          '<p id="trade-response-status" class="trade-feedback" role="status"></p>' +
-          (recipient ? '<div class="trade-response"><button id="decline-trade" class="action-button">Decline</button><button id="accept-trade" class="secondary-button">Accept trade</button></div>' : "") +
-          (sender ? '<button id="cancel-trade" class="action-button">Cancel offer</button>' : "") + '</article>'
+        ? this.offerCard(trade, from, target, state.viewerId)
         : previousId ? '<p class="trade-feedback">The previous offer has closed. No further response can be sent.</p>' : "";
       if (trade) {
         const accept = document.getElementById("accept-trade"), decline = document.getElementById("decline-trade");
@@ -133,12 +163,14 @@ window.TradePanel = class TradePanel {
         ? "The sender no longer holds the offered cards. Decline or send a new counteroffer."
         : state.tradeUnavailableReason === "trading-player-unavailable" ? "A trading player is no longer available." : "";
       const required = trade.targetId === state.viewerId ? trade.want : trade.give;
-      const shortage = resources.filter((r) => required[r] > self.resources[r]).map((r) => `${required[r] - self.resources[r]} more ${r}`);
+      const shortage = party ? resources.filter((r) => required[r] > self.resources[r]).map((r) => `${required[r] - self.resources[r]} more ${r}`) : [];
       const responseReason = connection || phase || offerReason || (shortage.length ? `You need ${shortage.join(", ")} for this offer.` :
-        trade.targetId === state.viewerId ? "Accept exchanges the exact cards above. No cards move until confirmed by the server." :
+        trade.targetId === state.viewerId ? "Both sides exchange together. Review the cards before accepting." :
           trade.fromId === state.viewerId ? `Waiting for the recipient. ${state.players.find((p) => p.id === trade.targetId)?.connected ? "" : "Their seat is offline; the offer stays saved."}` :
             "This offer is between the named players.");
       responseStatus.textContent = responseReason;
+      document.getElementById("trade-offer-card").dataset.tradeState = !this.isReady() ? "offline" : this.isBusy() ? "pending" :
+        phase || offerReason || shortage.length ? "blocked" : trade.targetId === state.viewerId ? "ready" : party ? "waiting" : "observing";
       const accept = document.getElementById("accept-trade");
       if (accept) {
         accept.disabled = Boolean(connection || phase || offerReason || shortage.length);

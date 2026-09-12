@@ -58,5 +58,13 @@ window.GameCards = (() => {
       <p class="reference-note">Use your best available rate. The bank must have the resource you want. Trade only after rolling and resolving any seven; a paired turn has no second roll.</p>
       <p class="reference-note">Player trades have no fixed ratio: agree on an exchange with the active primary player. No gifts or the same resource on both sides.</p></div>`;
   }
-  return { resource, development, revealed, reference };
+  function tradeResources(bundle) {
+    return Object.entries(materials).filter(([type]) => bundle[type] > 0).map(([type, material]) =>
+      `<li class="trade-resource-card" data-trade-resource="${type}" data-count="${escape(bundle[type])}" style="--material:${material}">
+        <span class="trade-resource-count"><span aria-hidden="true">×</span><b>${escape(bundle[type])}</b></span>
+        <span class="trade-resource-art">${Tabletop.icon(type)}</span>
+        <strong class="trade-resource-name">${type}</strong>
+      </li>`).join("");
+  }
+  return { resource, development, revealed, reference, tradeResources };
 })();

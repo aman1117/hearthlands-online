@@ -104,6 +104,8 @@ Player trading always involves the active primary player. Other players may prop
 
 Trade responses are bound to the exact offer ID and terms, never whichever offer happens to be displayed later. Routine state/presence updates preserve the Accept button and draft inputs instead of replacing them mid-click. A replacement offer gets new response controls, so pressing an old button cannot accept new terms. Counteroffers default to the actual other party.
 
+Offers appear as parchment-style tabletop cards with player-colour markers, illustrated resource quantities, and separate **You receive** / **You give** sections. The sender sees the reciprocal exchange; uninvolved players see named parties instead of misleading personal instructions. Accept is the primary action, while decline/withdraw and pending, offline or shortage states remain clearly distinguished.
+
 Accept explains missing resources, offline recovery, or an unconfirmed request. Cards are not reserved when offered; they move only when both inventories are checked and the exchange/receipt/history commit together. Spending the sender's offered resources, beginning a mandatory robber/free-road action, ending the turn, or removing a party closes invalid offers with a public activity entry. A shortage in the recipient's private hand is shown only to that recipient; it does not automatically disclose their holdings to the table.
 
 Pending offers and submitted responses survive reconnect/restart. A slow or lost acknowledgement retries the same saved request without a second exchange. Delayed responses cannot accept changed terms, and delayed counteroffers cannot recreate closed trades. Editing an unsent draft is not a saved offer; closing the browser may discard that unsent draft.

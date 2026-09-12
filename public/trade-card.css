@@ -1,0 +1,56 @@
+.table-trade-card.trade-offer { --offer-ink: #3f4632; --offer-paper: #f7eed7; --offer-line: #cfbc8c; --offer-muted: #746443; padding: 0; margin: 0 0 16px; border: 1px solid #b79b65; border-top: 3px solid #a4874c; border-radius: 8px; background: var(--offer-paper); color: var(--offer-ink); box-shadow: inset 0 0 0 3px #fff8e7, 0 3px 7px #503e2020; overflow: hidden; }
+.offer-heading { display: flex; align-items: center; gap: 10px; padding: 16px 16px 11px; min-width: 0; }
+.offer-heading > div { flex: 1; min-width: 0; }
+.offer-seal { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; color: #7c5d2b; border: 1px solid #bca36c; border-radius: 50%; background: #e7d5a4; box-shadow: inset 0 0 0 3px #f5e8c3; }
+.offer-seal .ui-icon { width: 22px; height: 22px; }
+.offer-eyebrow { display: block; color: #7f6940; font: 650 8px/1.3 var(--body); letter-spacing: .16em; margin-bottom: 3px; }
+.offer-heading #trade-offer-title { margin: 0; color: #3e4c37; font: 650 18px/1.2 var(--display); }
+.offer-badge { align-self: flex-start; margin-top: 1px; padding: 4px 6px; background: #e4e7ce; border: 1px solid #b7c29b; border-radius: 3px; color: #4e6039; font: 650 9px/1.2 var(--body); white-space: nowrap; }
+.offer-participants { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 0 16px 13px; border-bottom: 1px solid var(--offer-line); }
+.offer-player { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.offer-player > i { width: 7px; height: 11px; flex: 0 0 auto; border-radius: 1px; background: var(--seat-color); box-shadow: inset 0 0 0 1px #0002; }
+.offer-player > strong { font: 600 12px/1.4 var(--body); overflow-wrap: anywhere; }
+.offer-to { color: #968158; font-size: 15px; }
+.offer-exchange { padding: 13px 16px 14px; }
+.offer-side-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.offer-side-heading h4 { margin: 0; min-width: 0; color: #52633c; font: 700 10px/1.4 var(--body); letter-spacing: .065em; text-transform: uppercase; overflow-wrap: anywhere; }
+.offer-side-give .offer-side-heading h4 { color: #866044; }
+.offer-side-heading > span { flex-shrink: 0; font: 500 10px var(--body); color: var(--offer-muted); }
+.trade-resource-list { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(63px, 78px)); gap: 9px; margin: 0; padding: 0; }
+.trade-resource-card { position: relative; min-width: 0; min-height: 91px; padding: 21px 6px 8px; border: 1px solid #bba979; border-bottom: 3px solid var(--material); border-radius: 6px; background: linear-gradient(115deg, #fff8e6, #eadcba); box-shadow: inset 0 0 0 2px #fff7df, 0 2px 3px #5b482025; text-align: center; }
+.trade-resource-card::before { content: ""; position: absolute; inset: 4px; border: 1px solid #bdab7655; border-radius: 3px; pointer-events: none; }
+.trade-resource-count { position: absolute; top: 7px; right: 8px; display: flex; gap: 2px; align-items: baseline; color: #574a30; line-height: 1; }
+.trade-resource-count > span { font-size: 10px; }
+.trade-resource-count b { font: 700 15px/1 var(--display); }
+.trade-resource-art { display: grid; place-items: center; height: 39px; }
+.trade-resource-art .ui-icon { width: 31px; height: 31px; filter: drop-shadow(0 1px 0 #fff7dd); }
+.trade-resource-name { display: block; margin-top: 5px; font: 650 10px/1.3 var(--display); text-transform: capitalize; color: #665332; }
+.offer-divider { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: #9a8555; }
+.offer-divider::before, .offer-divider::after { content: ""; height: 1px; flex: 1; background: #d9cba5; }
+.offer-divider > span { display: grid; place-items: center; width: 23px; height: 23px; border: 1px solid #cabb94; border-radius: 50%; font: 18px/1 var(--body); background: #f9f1dc; }
+.offer-footer { padding: 12px 16px 16px; border-top: 1px solid var(--offer-line); background: #eee3c780; }
+.table-trade-card #trade-response-status { min-height: 34px; margin: 0 0 11px; color: #716347; font: 450 11px/1.5 var(--body); }
+.table-trade-card .trade-response { display: grid; grid-template-columns: minmax(75px, .8fr) minmax(0, 1.4fr); gap: 9px; }
+.table-trade-card .trade-response button, .table-trade-card .trade-cancel { min-height: 44px; padding: 10px 8px; margin: 0; font: 650 12px var(--body); border-radius: 4px; }
+.table-trade-card .trade-decline { color: #716143; background: #faf4e6; border-color: #c9b992; }
+.table-trade-card .trade-decline:hover:not(:disabled) { color: #58452f; border-color: #a48959; background: #f4e9d1; }
+.table-trade-card .trade-accept { background: #a95032; color: #fff9e9; border-color: #8d4029; box-shadow: 0 2px 0 #773823, inset 0 1px #e49d7270; }
+.table-trade-card .trade-accept:hover:not(:disabled) { background: #b55b3a; border-color: #843b26; transform: none; }
+.table-trade-card .trade-accept:active:not(:disabled) { background: #964629; transform: translateY(1px); box-shadow: inset 0 1px 3px #5d2b2030; }
+.table-trade-card .trade-cancel { width: 100%; border-color: #c4b18a; color: #76603b; background: #f8efdb; }
+.table-trade-card button:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+.table-trade-card button:focus-visible { outline: 3px solid #375f60; outline-offset: 3px; }
+.table-trade-card[data-trade-state="blocked"] #trade-response-status, .table-trade-card[data-trade-state="offline"] #trade-response-status { color: #8d482e; }
+.table-trade-card[data-trade-state="pending"] #trade-response-status { color: #405f55; }
+@media (max-width: 380px) {
+  .offer-heading { padding: 13px 12px 10px; gap: 8px; }
+  .offer-participants { padding-inline: 12px; }
+  .offer-exchange { padding-inline: 12px; }
+  .offer-footer { padding: 11px 12px 14px; }
+  .offer-heading #trade-offer-title { font-size: 16px; }
+  .trade-resource-list { grid-template-columns: repeat(auto-fit, minmax(58px, 72px)); gap: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .table-trade-card button { transition: none; }
+  .table-trade-card .trade-accept:active:not(:disabled) { transform: none; }
+}
