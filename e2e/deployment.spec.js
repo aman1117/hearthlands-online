@@ -121,6 +121,12 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     await actor.locator("#offer-submit").click();
     await exchange.other.waitForFunction(() => !busy && state.trade?.targetId === state.viewerId);
     const tradeId = await exchange.other.evaluate(() => state.trade.id);
+    const offerCard = exchange.other.locator("#trade-offer-card");
+    await expect(offerCard).toHaveClass(/table-trade-card/);
+    await expect(offerCard.locator(`[data-trade-direction="receive"] [data-trade-resource="${exchange.give}"]`)).toHaveAttribute("data-count", "1");
+    await expect(offerCard.locator(`[data-trade-direction="give"] [data-trade-resource="${exchange.want}"]`)).toHaveAttribute("data-count", "1");
+    await expect(offerCard).toHaveAttribute("data-trade-state", "ready");
+    await offerCard.screenshot({ path: testInfo.outputPath("live-trade-offer.png") });
     const button = exchange.other.locator("#accept-trade");
     await button.scrollIntoViewIfNeeded();
     const box = await button.boundingBox();
