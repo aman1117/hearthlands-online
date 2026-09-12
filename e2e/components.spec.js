@@ -134,6 +134,19 @@ test("resource trade controls use illustrated keyboard-operable choices, not nat
   await page.locator("#trade-section").screenshot({ path: testInfo.outputPath("trading-post.png") });
 });
 
+test("a restored unfulfillable offer explains why acceptance is blocked without exposing the sender's hand", async ({ page }) => {
+  const view = fixture();
+  const sender = view.players.find((player) => player.id !== view.viewerId);
+  view.trade = { id: "legacy-offer", fromId: sender.id, targetId: view.viewerId,
+    give: { wood: 1, brick: 0, sheep: 0, wheat: 0, ore: 0 },
+    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } };
+  view.tradeUnavailableReason = "offered-resources-spent";
+  await story(page, view);
+  await expect(page.locator("#accept-trade")).toBeDisabled();
+  await expect(page.locator("#trade-response-status")).toContainText("sender no longer holds the offered cards");
+  await expect(page.locator("#decline-trade")).toBeEnabled();
+});
+
 test("board choices support keyboard preview and Escape without placing a piece", async ({ page }) => {
   await story(page, fixture("setup"));
   await expect(page.locator("#location-select-trigger")).toHaveCount(0);

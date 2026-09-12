@@ -92,6 +92,16 @@ Played-card counts are stored with the game and survive reconnects/restarts. Exi
 
 Player trading always involves the active primary player. Other players may propose trades to that player or respond/counteroffer, but may not trade independently with each other. The paired secondary player may trade with the bank/ports only.
 
+### Trading timing and reliable offers
+
+**No player or bank/port trading before the production roll.** First roll, collect resources, and fully resolve any seven (discards, robber, theft); then trade during the Action phase. An eligible older development card may be played before rolling, but that does not unlock trading. The interface explains the current restriction and the server rejects out-of-phase requests.
+
+Trade responses are bound to the exact offer ID and terms, never whichever offer happens to be displayed later. Routine state/presence updates preserve the Accept button and draft inputs instead of replacing them mid-click. A replacement offer gets new response controls, so pressing an old button cannot accept new terms. Counteroffers default to the actual other party.
+
+Accept explains missing resources, offline recovery, or an unconfirmed request. Cards are not reserved when offered; they move only when both inventories are checked and the exchange/receipt/history commit together. Spending the sender's offered resources, beginning a mandatory robber/free-road action, ending the turn, or removing a party closes invalid offers with a public activity entry. A shortage in the recipient's private hand is shown only to that recipient; it does not automatically disclose their holdings to the table.
+
+Pending offers and submitted responses survive reconnect/restart. A slow or lost acknowledgement retries the same saved request without a second exchange. Delayed responses cannot accept changed terms, and delayed counteroffers cannot recreate closed trades. Editing an unsent draft is not a saved offer; closing the browser may discard that unsent draft.
+
 The audited implementation covers the base game, the current paired-player extension, and the documented removal house rule—not unrelated expansions. Regression tests are a release gate, not a mathematical guarantee that no defect can ever occur. In particular, this implementation requires at least one legal available road before playing Road Building; the retrieved publisher FAQ did not conclusively address burning that card with zero legal roads.
 
 ### Returning cards on a seven

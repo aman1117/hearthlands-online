@@ -557,9 +557,12 @@ test("trade rejects gifts, overlap, unavailable cards, hostile amounts, and unau
   act(room, { type: "respondTrade", accept: false }, b);
   assert.equal(a.resources.wood, 4);
   act(room, offer);
+  const unavailableOfferId = room.trade.id;
   act(room, { type: "bankTrade", giveResource: "wood", receiveResource: "wheat" }, a);
   rejected(room, { type: "respondTrade", accept: true }, b);
-  assert.ok(room.trade, "An invalid acceptance leaves the pending trade intact");
+  assert.equal(room.trade, null, "Spending the offered cards cancels an offer that can no longer be fulfilled");
+  assert.ok(room.log.some((event) => event.type === "tradeCancelled" &&
+    event.data.tradeId === unavailableOfferId && event.data.reason === "offered-resources-spent"));
   act(room, { type: "endTurn" });
   assert.equal(room.trade, null);
   conserved(room);

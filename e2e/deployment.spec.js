@@ -2,7 +2,8 @@
 
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
-const { perform } = require("./ui.cjs");
+const { perform, choose } = require("./ui.cjs");
+const { plan } = require("./strategy.cjs");
 
 const deploymentUrl = process.env.HEARTHLANDS_DEPLOYMENT_URL;
 test.skip(!deploymentUrl, "Opt in with HEARTHLANDS_DEPLOYMENT_URL; these checks create a new saved test room.");
@@ -68,9 +69,7 @@ test("public deployment supports real three-player play, WebSockets, offline rec
       const page = byId.get(view.currentPlayerId);
       await page.waitForFunction((revision) => state.revision >= revision && !busy, view.revision);
       await expect(page.locator("#ping-mode")).toHaveAttribute("aria-pressed", "false");
-      const move = await page.evaluate(() => state.setupNeedsRoad
-        ? { type: "setupRoad", edgeId: state.legal.roadEdges[0] }
-        : { type: "setupSettlement", vertexId: state.legal.settlementVertices[0] });
+      const move = plan(await page.evaluate(() => state));
       const beforePlacement = !undoExercised ? await persistentView(page) : null;
       await perform(page, move);
       if (!undoExercised) {
@@ -86,6 +85,9 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     const actor = byId.get(view.currentPlayerId);
     await actor.waitForFunction((revision) => state.revision >= revision && !busy, view.revision);
     await expect(actor.locator("#undo-placement")).toBeDisabled();
+    await actor.locator('[data-tab="player"]').click();
+    await expect(actor.locator("#offer-submit")).toBeDisabled();
+    await expect(actor.locator("#trade-status")).toContainText(/roll/i);
     await perform(actor, { type: "roll" });
     if (await actor.evaluate(() => state.phase === "robber")) {
       await perform(actor, { type: "moveRobber", tileId: await actor.evaluate(() => state.legal.robberTiles[0]) });
@@ -101,6 +103,41 @@ test("public deployment supports real three-player play, WebSockets, offline rec
         player.resources === undefined && player.developmentCards === undefined &&
         player.revealedDevelopment.victoryPoint === undefined))).toBe(true);
     }
+    const actorSelf = await actor.evaluate(() => state.players.find((player) => player.id === state.viewerId));
+    let exchange;
+    for (const other of pages.filter((page) => page !== actor)) {
+      const self = await other.evaluate(() => state.players.find((player) => player.id === state.viewerId));
+      for (const give of Object.keys(actorSelf.resources).filter((r) => actorSelf.resources[r] > 0)) {
+        const want = Object.keys(self.resources).find((r) => r !== give && self.resources[r] > 0);
+        if (want) { exchange = { other, self, give, want }; break; }
+      }
+      if (exchange) break;
+    }
+    expect(exchange, "Legal setup should leave two different resources for a live trade").toBeTruthy();
+    await actor.locator('[data-tab="player"]').click();
+    await choose(actor, "trade-target", exchange.self.id);
+    await actor.locator(`#give-${exchange.give}`).fill("1");
+    await actor.locator(`#want-${exchange.want}`).fill("1");
+    await actor.locator("#offer-submit").click();
+    await exchange.other.waitForFunction(() => !busy && state.trade?.targetId === state.viewerId);
+    const tradeId = await exchange.other.evaluate(() => state.trade.id);
+    const button = exchange.other.locator("#accept-trade");
+    await button.scrollIntoViewIfNeeded();
+    const box = await button.boundingBox();
+    await exchange.other.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await exchange.other.mouse.down();
+    const beforePeer = await exchange.other.evaluate(() => state.revision);
+    const peer = pages.find((page) => page !== actor && page !== exchange.other);
+    await peer.reload();
+    await settled(peer);
+    await exchange.other.waitForFunction((revision) => state.revision > revision, beforePeer);
+    await exchange.other.mouse.up();
+    await exchange.other.waitForFunction(() => !busy && !state.trade);
+    await actor.waitForFunction(() => !state.trade && !busy);
+    const exchanged = await actor.evaluate(() => state.players.find((player) => player.id === state.viewerId).resources);
+    expect(exchanged[exchange.give]).toBe(actorSelf.resources[exchange.give] - 1);
+    expect(exchanged[exchange.want]).toBe(actorSelf.resources[exchange.want] + 1);
+    expect(await actor.evaluate((id) => state.log.filter((event) => event.type === "tradeAccepted" && event.data.tradeId === id).length, tradeId)).toBe(1);
     const ownerId = await host.evaluate(() => state.viewerId);
     await pages[1].locator(`[data-public-player="${ownerId}"]`).click();
     await expect(pages[1].locator("#public-cards-dialog")).toBeVisible();

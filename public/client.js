@@ -22,7 +22,6 @@ let busy = false;
 let bound = false;
 let seat = null;
 let draftContext = "";
-let displayedTradeId = null;
 let selectedCardId = null;
 let zoom = 1;
 let panzoom = null;
@@ -56,6 +55,11 @@ const boardPlacement = new BoardPlacement({
   isDragging: () => suppressMapClick, submit: (payload) => action(payload),
   cancelBuild() { selectedAction = null; renderActions(); renderBoard(); },
   describe: locationLabel, announce: notify,
+});
+const trading = new TradePanel({
+  getState: () => state, isBusy: () => busy, isReady: () => bound,
+  submit: (payload) => action(payload), chooseTab: tradeTab,
+  bundleInputs, readBundle, bundleText, escape: escapeHtml, notify,
 });
 const connection = new GameConnection({
   socket,
@@ -97,6 +101,7 @@ const connection = new GameConnection({
     discardDialog.reset();
     publicCards.close();
     boardPlacement.reset();
+    trading.reset();
     presence.clear();
     resetDice();
     state = null;
@@ -283,6 +288,7 @@ elements["leave-screen"].onclick = () => {
   discardDialog.reset();
   publicCards.close();
   boardPlacement.reset();
+  trading.reset();
   connection.pause();
   resetDice();
   state = null;
@@ -321,6 +327,7 @@ async function resume(saved) {
   discardDialog.reset();
   publicCards.close();
   boardPlacement.reset();
+  trading.reset();
   GameControls.close(false);
   resetDice();
   state = null;
@@ -383,6 +390,7 @@ function updateBusy() {
   elements.game.setAttribute("aria-busy", String(busy));
   discardDialog.refresh();
   boardPlacement.controls();
+  trading.refresh();
 }
 function beginDiceRoll(id) {
   if (!state || !bound || busy) return null;
@@ -567,7 +575,7 @@ function list(key) { return legal()[key] || []; }
 function render() {
   if (!state) return;
   const context = `${state.phase}:${state.currentPlayerId}:${state.trade?.id || ""}:${state.freeRoadsRemaining}`;
-  const draft = context === draftContext ? [...elements.game.querySelectorAll("input[id]")].filter((node) => node.type !== "checkbox").map((node) => [node.id, node.value]) : [];
+  const draft = context === draftContext ? [...elements.game.querySelectorAll("input[id]")].filter((node) => node.type !== "checkbox" && !node.closest("#player-trade")).map((node) => [node.id, node.value]) : [];
   draftContext = context;
   if (!mine() || !["action", "roll"].includes(state.phase)) selectedAction = null;
   elements.game.dataset.phase = state.phase;
@@ -889,6 +897,7 @@ function updateBankLabel() {
   if (help) {
     const source = rate === 2 ? "Your resource port gives a 2:1 rate." : rate === 3 ? "Your general port gives a 3:1 rate." : "The bank's standard rate is 4:1.";
     help.textContent = !mine() ? "Bank trading is available during your own action phase."
+      : state.phase === "roll" ? "Roll the dice before trading with the bank."
       : state.phase !== "action" || state.freeRoadsRemaining ? "Finish the current required action before trading."
       : give === receive ? "Choose a different resource to receive."
       : !state.bank?.[receive] ? `The bank has no ${receive} available.`
@@ -899,30 +908,12 @@ function updateBankLabel() {
 function renderTrade() {
   const visible = !["lobby", "setup", "finished"].includes(state.phase);
   elements["trade-section"].classList.toggle("hidden", !visible);
-  if (!visible) return;
+  if (!visible) { trading.reset(); return; }
   elements["bank-trade"].innerHTML = `${GameControls.resourcePicker("bank-give", "Spend from your hand · best port rate", { counts: me().resources, rates: me().tradeRates, onChange: updateBankLabel })}<div class="trade-divider"><span>EXCHANGE</span></div>${GameControls.resourcePicker("bank-receive", "Take one from the bank", { selected: "brick", counts: state.bank, disabledValues: RESOURCES.filter((r) => !state.bank[r]), onChange: updateBankLabel })}<p id="bank-trade-help" class="trade-feedback" role="status"></p><button id="bank-submit" class="secondary-button exchange-button">Trade</button>`;
   document.querySelector("#bank-submit").onclick = () => action({
     type: "bankTrade", giveResource: GameControls.read("bank-give"), receiveResource: GameControls.read("bank-receive"),
   });
-  const trade = state.trade;
-  let offer = "";
-  if (trade) {
-    const involved = [trade.fromId, trade.targetId].includes(state.viewerId);
-    offer = `<div class="trade-offer"><strong>${escapeHtml(player(trade.fromId).name)} offers ${escapeHtml(player(trade.targetId).name)}</strong><p>Gives ${bundleText(trade.give)}<br>Requests ${bundleText(trade.want)}</p>${trade.targetId === state.viewerId ? '<div class="trade-response"><button id="decline-trade" class="action-button">Decline</button><button id="accept-trade" class="secondary-button">Accept trade</button></div>' : ""}${trade.fromId === state.viewerId ? '<button id="cancel-trade" class="action-button">Cancel offer</button>' : ""}</div>`;
-    if (trade.id !== displayedTradeId && involved) {
-      elements["trade-details"].open = true;
-      tradeTab("player");
-    }
-  }
-  displayedTradeId = trade?.id || null;
-  const targets = state.players.filter((p) => p.id !== state.viewerId && (mine() || p.id === state.currentPlayerId));
-  elements["player-trade"].innerHTML = `${offer}<p class="small-note">${state.turnRole === "secondary" ? "Paired turns permit bank trades only." : "Trades must involve the current primary player. Both players must agree."}</p>${GameControls.playerPicker("trade-target", "Trade with", targets)}<h3 class="trade-side-heading">You give</h3>${bundleInputs("give", me().resources)}<h3 class="trade-side-heading">You receive</h3>${bundleInputs("want")}<button id="offer-submit" class="secondary-button" ${legal().canOfferTrade ? "" : "disabled"}>${trade ? "Send counteroffer" : "Send offer"}</button>`;
-  document.querySelector("#accept-trade")?.addEventListener("click", () => action({ type: "respondTrade", accept: true, tradeId: trade.id }));
-  document.querySelector("#decline-trade")?.addEventListener("click", () => action({ type: "respondTrade", accept: false, tradeId: trade.id }));
-  document.querySelector("#cancel-trade")?.addEventListener("click", () => action({ type: "cancelTrade", tradeId: trade.id }));
-  document.querySelector("#offer-submit").onclick = () => action({
-    type: "offerTrade", targetId: GameControls.read("trade-target"), give: readBundle("give"), want: readBundle("want"), replaceTradeId: trade?.id,
-  });
+  trading.render();
 }
 
 function point(vertex) { return { x: vertex.x * 100, y: vertex.y * 100 }; }

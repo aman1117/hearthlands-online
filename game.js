@@ -874,6 +874,9 @@ function assertDomesticTrade(room) {
 }
 function offerTrade(room, player, targetId, give, want, replaceTradeId) {
   assertDomesticTrade(room);
+  if (replaceTradeId != null && replaceTradeId !== room.trade?.id) {
+    throw new Error("This trade offer has closed or changed. Review the current trade before sending another.");
+  }
   if (room.trade && (replaceTradeId !== room.trade.id ||
       ![room.trade.fromId, room.trade.targetId].includes(player.id))) {
     throw new Error("Resolve or cancel the existing trade first.");
@@ -922,6 +925,25 @@ function respondTrade(room, player, action) {
     type: "tradeDeclined", actorId: player.id, data: publicTrade(trade),
   });
   room.trade = null;
+}
+
+function pendingTradeReason(room) {
+  const trade = room.trade;
+  if (!trade) return null;
+  const parties = activePlayers(room).filter((player) => [trade.fromId, trade.targetId].includes(player.id));
+  if (parties.length !== 2 || !parties.some((player) => player.id === currentPlayer(room)?.id)) {
+    return "trading-player-unavailable";
+  } else if (room.phase !== "action" || room.freeRoadsRemaining || room.turnRole !== "primary") {
+    return "required-action";
+  } else if (!hasBundle(parties.find((player) => player.id === trade.fromId), trade.give)) {
+    // The sender's offer is public; never infer or announce the recipient's hidden hand.
+    return "offered-resources-spent";
+  }
+  return null;
+}
+function reconcilePendingTrade(room) {
+  const reason = pendingTradeReason(room);
+  if (reason) cancelPendingTrade(room, reason);
 }
 function buyDevelopment(room, player) {
   assertActionPhase(room);
@@ -1069,6 +1091,7 @@ function executeAction(room, actorId, action, random) {
   }
   updateScores(room, restoredAwards);
   checkWinner(room);
+  reconcilePendingTrade(room);
   return result;
 }
 
@@ -1295,7 +1318,8 @@ function publicState(room, viewerId) {
     robberVictims: room.robberVictims, freeRoadsRemaining: room.freeRoadsRemaining,
     bank: room.bank, developmentCount: room.developmentDeck.length,
     longestRoadHolderId: room.longestRoadHolderId, largestArmyHolderId: room.largestArmyHolderId,
-    trade: room.trade, winnerId: room.winnerId, log: events.log, viewerId,
+    trade: room.trade, tradeUnavailableReason: pendingTradeReason(room),
+    winnerId: room.winnerId, log: events.log, viewerId,
     legal: legalActions(room, viewerId),
   };
   return structuredClone(state);
