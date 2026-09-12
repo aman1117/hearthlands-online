@@ -1,0 +1,70 @@
+.players-panel > .roster-heading { padding: 0 1px 4px; margin-bottom: 12px; }
+.roster-heading h2 { font: 650 18px var(--display); color: #3b4e3b; letter-spacing: 0; }
+.roster-heading #connected-count { border: 1px solid #c5c6ac; border-radius: 4px; background: #ebe9d8; color: #52614b; font: 650 11px var(--body); padding: 4px 7px; }
+.player-card.player-nameplate.nameplate-plaque { display: block; position: relative; min-width: 0; margin: 0 0 12px; padding: 12px 10px 0; border: 1px solid #cdbd97; border-left: 3px solid var(--player-color); border-radius: 7px; background: #faf3e2; background-image: none; box-shadow: inset 0 0 0 2px #fffaf0, 0 2px 4px #65502b12; }
+.player-card.player-nameplate.nameplate-plaque.current { border-color: #9d905f; border-left-color: var(--player-color); background: #f5eccf; box-shadow: inset 0 0 0 2px #fff7df, 0 2px 5px #5f4b2720; }
+.player-card.player-nameplate.nameplate-plaque.offline { background: #f0ecdf; }
+.player-card.player-nameplate.nameplate-plaque.winner { border-color: #b3974f; border-left-color: var(--player-color); background: #f5e9c4; }
+.nameplate-plaque .nameplate-heading { display: grid; grid-template-columns: 26px minmax(0, 1fr) 36px; gap: 7px; align-items: start; }
+.nameplate-plaque .seat-number { position: relative; width: 26px; height: 30px; margin-top: 1px; border: 1px solid #b6a57e; border-top: 4px solid var(--player-color); border-radius: 4px 4px 7px 7px; background: #fff8e5; color: #51472f; clip-path: none; box-shadow: inset 0 0 0 2px #f0e3bd; }
+.nameplate-plaque .seat-number b { font: 700 14px/1 var(--display); }
+.nameplate-plaque .player-name { display: block; color: #2f443a; font: 650 13px/1.4 var(--body); white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
+.nameplate-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
+.nameplate-you, .nameplate-plaque .admin-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; border-radius: 2px; font: 650 8px/1.2 var(--body); text-transform: uppercase; letter-spacing: .045em; }
+.nameplate-you { background: #e3e7d0; color: #52603c; border: 1px solid #c2c8a5; }
+.nameplate-plaque .admin-chip { background: #eee0b7; color: #785f2d; border: 1px solid #cfbc83; }
+.nameplate-plaque .admin-chip .ui-icon { width: 10px; height: 10px; }
+.nameplate-plaque .player-score { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 36px; min-height: 44px; padding: 5px 2px 4px; border: 1px solid #c7b78c; border-radius: 18px 18px 5px 5px; background: #eee2bc; box-shadow: inset 0 0 0 2px #fbf2d9; }
+.nameplate-plaque .player-score strong { color: #47573c; font: 700 22px/1 var(--display); font-variant-numeric: tabular-nums; }
+.nameplate-plaque .player-score small { color: #7b6943; font: 650 8px/1 var(--body); letter-spacing: .08em; }
+.nameplate-presence { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; margin: 6px 0; min-height: 18px; }
+.nameplate-plaque .player-sub { display: inline-flex; align-items: center; gap: 5px; margin: 0; color: #69705a; font: 450 10px/1.3 var(--body); letter-spacing: 0; text-transform: none; }
+.nameplate-plaque .status-dot { width: 5px; height: 5px; background: #b08b68; }
+.nameplate-plaque .status-dot.online { background: #739052; }
+.nameplate-plaque .role-label { margin: 0; padding: 3px 5px; border: 1px solid #bcc396; border-radius: 3px; background: #e4e8cd; color: #4f5f37; font: 650 9px/1.2 var(--body); }
+.nameplate-plaque.winner .role-label { background: #ead59d; color: #755421; border-color: #c3a563; }
+.player-nameplate.nameplate-plaque .nameplate-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; padding: 0; border-top: 1px solid #ddd0ae; border-bottom: 1px solid #ddd0ae; }
+.nameplate-plaque .player-metric { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; align-items: center; min-height: 44px; padding: 6px; }
+.nameplate-plaque .player-metric:nth-child(odd) { border-right: 1px solid #e0d5b9; padding-right: 6px; }
+.nameplate-plaque .player-metric:nth-child(even) { padding-left: 6px; }
+.nameplate-plaque .player-metric:nth-child(-n+2) { border-bottom: 1px solid #e0d5b9; }
+.nameplate-plaque .player-metric > .ui-icon { width: 15px; height: 15px; color: #9c8959; }
+.nameplate-plaque .player-metric > b { color: #42543b; text-align: right; font: 650 16px/1 var(--body); font-variant-numeric: tabular-nums; }
+.player-nameplate.nameplate-plaque .player-metric .metric-label { display: block; grid-column: 1 / -1; color: #697155; font: 450 10px/1.25 var(--body); white-space: normal; overflow-wrap: normal; }
+.nameplate-plaque .player-awards { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.nameplate-plaque .bonus-label { display: inline-flex; align-items: center; gap: 4px; margin: 0; padding: 4px 5px; border: 1px solid #cbb77f; border-radius: 3px; background: #f0e3ba; color: #795d2a; font: 650 9px/1.3 var(--body); }
+.nameplate-plaque .bonus-label .ui-icon { width: 12px; height: 12px; }
+.nameplate-alerts { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.nameplate-plaque .discard-owed-badge, .nameplate-plaque .pending-removal-badge { display: block; margin: 0; padding: 5px 7px; border: 1px solid #d4b790; border-radius: 3px; color: #865332; background: #f3e5cd; font: 600 10px/1.4 var(--body); }
+.nameplate-plaque .discard-owed-badge { border-left: 3px solid #a96b3c; }
+.nameplate-footer { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.nameplate-plaque .public-cards-link { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; min-height: 44px; padding: 7px 0; margin: 0; color: #657044; font: 600 10px var(--body); }
+.nameplate-plaque .public-cards-link .ui-icon { width: 14px; height: 14px; color: #9c8142; }
+.nameplate-plaque .public-cards-link > span:last-child { margin-left: auto; padding-left: 2px; color: #8d8862; }
+.nameplate-plaque .public-cards-link:hover { color: #3c5943; }
+.nameplate-plaque .remove-player { flex: 0 0 auto; min-height: 44px; padding: 7px 4px; margin: 0 0 0 4px; color: #91765d; font: 450 9px var(--body); text-align: right; }
+.nameplate-plaque .remove-player:hover { color: #8b432d; text-decoration: underline; }
+.nameplate-plaque button:focus-visible { outline: 2px solid #45695e; outline-offset: 1px; border-radius: 3px; }
+.nameplate-plaque:has(.nameplate-footer.hidden) { padding-bottom: 10px; }
+@media (min-width: 1800px) {
+  .nameplate-plaque .player-name { font-size: 14px; }
+  .player-nameplate.nameplate-plaque .player-metric .metric-label { font-size: 10px; }
+}
+@media (min-width: 1021px) and (max-width: 1200px) {
+  .player-card.player-nameplate.nameplate-plaque { padding-inline: 7px; }
+  .nameplate-plaque .nameplate-heading { grid-template-columns: 21px minmax(0, 1fr) 30px; gap: 5px; }
+  .nameplate-plaque .seat-number { width: 21px; height: 27px; }
+  .nameplate-plaque .player-score { width: 30px; }
+  .nameplate-plaque .player-name { font-size: 12px; }
+  .nameplate-plaque .player-metric { grid-template-columns: 14px minmax(0, 1fr); gap: 3px; padding-inline: 5px; }
+  .nameplate-plaque .player-metric > .ui-icon { width: 12px; height: 12px; }
+  .player-nameplate.nameplate-plaque .player-metric .metric-label { grid-column: 1 / -1; font-size: 9px; }
+}
+@media (max-width: 1020px) {
+  #players { align-items: stretch; gap: 10px; padding: 3px 3px 6px; }
+  .player-card.player-nameplate.nameplate-plaque { display: flex; flex-direction: column; flex: 0 0 214px; max-width: 214px; margin: 0; padding: 10px 10px 0; }
+  .nameplate-plaque .nameplate-footer { margin-top: auto; }
+  .player-nameplate.nameplate-plaque .player-metric .metric-label { font-size: 10px; }
+  .nameplate-plaque .public-cards-link { font-size: 11px; }
+  .nameplate-plaque .remove-player { font-size: 10px; }
+}

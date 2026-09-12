@@ -46,6 +46,9 @@ const presence = new MapPresence({
 });
 const activity = new ActivityFeed({ socket, getState: () => state, warn: notify });
 const publicCards = new PublicCardsGallery({ getState: () => state });
+const nameplates = new PlayerNameplates({
+  root: elements.players, openCards: (id) => publicCards.open(id), removePlayer: openRemoval,
+});
 const discardDialog = new DiscardDialog({
   getState: () => state, isBusy: () => busy, isReady: () => bound,
   submit: (resources) => action({ type: "discard", resources }),
@@ -606,37 +609,8 @@ function render() {
 
 function renderPlayers() {
   elements["connected-count"].textContent = `${state.players.filter((p) => p.connected).length}/${state.players.length}`;
-  elements.players.innerHTML = state.players.map((p, index) => `
-    <article class="player-card player-nameplate ${state.currentPlayerId === p.id ? "current" : ""} ${p.connected ? "" : "offline"}" style="--player-color:${p.color}">
-      <span class="seat-number" aria-label="Seat ${index + 1}">${index + 1}</span>
-      <div class="nameplate-identity"><span class="player-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}${p.id === state.viewerId ? " · you" : ""}</span>
-      <span class="player-sub"><i class="status-dot ${p.connected ? "online" : ""}" aria-hidden="true"></i>${p.connected ? "Online" : "Offline · seat saved"}${p.id === state.hostId ? ' · <b class="admin-chip">Admin</b>' : ""}</span></div>
-      <span class="player-score" title="${p.id === state.viewerId ? "Your total, including hidden victory cards" : "Visible victory points"}"><strong>${state.phase === "lobby" ? "–" : p.points}</strong><small>VP</small></span>
-      ${state.phase === "lobby" ? "" : `<div class="player-stats nameplate-metrics"><div class="player-metric" title="Resource cards only; development cards are separate"><b>${p.resourceCount}</b><span>Resources</span></div><div class="player-metric" title="Unplayed development cards"><b>${p.developmentCount || 0}</b><span>Dev cards</span></div><div class="player-metric" title="Length of the longest unbroken road"><b>${p.longestRoad || 0}</b><span>Longest road</span></div><div class="player-metric"><b>${p.knightsPlayed || 0}</b><span>Played knights</span></div></div>`}
-      <div class="player-awards">
-      ${p.id === state.longestRoadHolderId ? '<span class="bonus-label">Longest Road +2</span>' : ""}
-      ${p.id === state.largestArmyHolderId ? '<span class="bonus-label">Largest Army +2</span>' : ""}
-      ${state.currentPlayerId === p.id ? `<span class="role-label">${p.id === state.viewerId ? "Your turn" : "Playing"}${state.turnRole === "secondary" ? " · paired" : ""}</span>` : ""}
-      ${(state.removalRequests || []).some((request) => request.playerId === p.id) ? '<span class="pending-removal-badge">Removal requested</span>' : ""}
-      ${state.pendingDiscards?.[p.id] ? `<span class="discard-owed-badge">Must return ${state.pendingDiscards[p.id]} cards</span>` : ""}
-      ${state.phase !== "finished" && isAdmin() && p.id !== state.viewerId ? `<button class="text-button remove-player" data-player="${p.id}">Remove</button>` : ""}
-      </div></article>`).join("");
-  if (state.phase !== "lobby") {
-    elements.players.querySelectorAll(".player-nameplate").forEach((plate, index) => {
-      const person = state.players[index];
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "public-cards-link";
-      button.dataset.publicPlayer = person.id;
-      button.setAttribute("aria-label", `View ${person.name}'s public development cards`);
-      button.innerHTML = `${art.icon("cards")}<span>Public cards</span><span aria-hidden="true">↗</span>`;
-      button.onclick = () => publicCards.open(person.id);
-      plate.appendChild(button);
-    });
-  }
-  elements.players.querySelectorAll(".remove-player").forEach((button) => {
-    button.onclick = () => openRemoval(button.dataset.player);
-  });
+  elements["connected-count"].setAttribute("aria-label", `${state.players.filter((p) => p.connected).length} of ${state.players.length} players online`);
+  nameplates.render(state, isAdmin());
   elements["start-game"].classList.toggle("hidden", state.phase !== "lobby" || state.hostId !== state.viewerId);
   elements["start-game"].disabled = state.players.length < 3 || state.players.some((p) => !p.connected);
   elements["start-game"].textContent = state.players.length < 3 ? `Invite ${3 - state.players.length} more players`

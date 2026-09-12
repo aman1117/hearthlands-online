@@ -25,6 +25,8 @@ Board selection uses screen-space touch tolerance, including thin vertical roads
 
 The surrounding controls are purpose-built for play: compact player nameplates, physical-style resource/development cards, illustrated trade choices, player-colour trade targets, and bounded quantity steppers. Self-hosted Cinzel and Source Sans 3 fonts keep the table readable without external font requests. The map artwork is unchanged.
 
+Player nameplates use parchment plaques, coloured seat markers, framed victory-point counters, and illustrated public stats. Current/paired turns, the sole admin, offline saved seats, awards, removal requests and required discards have distinct text labels. The mobile roster scrolls horizontally without hiding stats. Public-card and removal controls retain their DOM identity during routine peer updates so clicks and keyboard focus are not lost; removal still requires the existing admin confirmation flow.
+
 Dice use a six-faced roll-and-settle animation. A pending roll remains visibly unconfirmed on a slow connection; only the server response chooses its final faces. Reduced-motion settings replace tumbling with a quiet pending indication.
 
 Open **? → Resource conversion** for an illustrated reference card showing the exact road, settlement, city-upgrade and development-card costs, plus 4:1 bank, 3:1 general-port and 2:1 matching-port exchanges. It is a read-only guide, not a card you buy or play.

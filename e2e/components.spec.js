@@ -26,9 +26,9 @@ test.afterAll(async () => {
   await new Promise((resolve) => io.close(resolve));
 });
 
-function fixture(phase = "action") {
+function fixture(phase = "action", playerCount = 4) {
   const { room, player } = createRoom("Rowan");
-  ["Mira", "Ellis", "Noa"].forEach((name) => addPlayer(room, name));
+  ["Mira", "Ellis", "Noa", "Sage", "Ash"].slice(0, playerCount - 1).forEach((name) => addPlayer(room, name));
   startGame(room, player.id, () => .999);
   room.code = "UITEST";
   if (phase !== "setup") {
@@ -75,6 +75,106 @@ test("player nameplates label their statistics and explain offline seats", async
   for (const label of ["Resources", "Dev cards", "Longest road", "Played knights"]) await expect(page.locator(".player-nameplate").first()).toContainText(label);
   expect(await page.locator(".player-nameplate").first().evaluate((node) => getComputedStyle(node).backgroundImage)).toBe("none");
   await page.locator(".players-panel").screenshot({ path: testInfo.outputPath("player-nameplates.png") });
+});
+
+for (const [width, count] of [[1920, 3], [1440, 3], [1100, 3], [390, 6], [320, 6]]) {
+  test(`tabletop nameplates stay readable for ${count} seats at ${width}px without exposing hands`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: width > 1020 ? 1000 : 844 });
+    const view = fixture("action", count);
+    view.hostId = view.players[2].id;
+    view.players[0].name = "amansha";
+    view.players[1].name = count === 6 ? "LongName<&>1234567890" : "asur";
+    view.players[2].name = "Shivam";
+    view.players[0].points = 7;
+    view.players[0].resourceCount = count === 6 ? 120 : 12;
+    view.players[0].developmentCount = count === 6 ? 34 : 5;
+    view.players[2].longestRoad = 6;
+    view.longestRoadHolderId = view.players[2].id;
+    await story(page, view);
+    const before = await page.evaluate(() => JSON.stringify(state));
+    await expect(page.locator(".nameplate-plaque")).toHaveCount(count);
+    await expect(page.locator('.nameplate-plaque[aria-current="true"]')).toHaveCount(1);
+    await expect(page.locator(".nameplate-plaque .admin-chip:visible")).toHaveCount(1);
+    for (const player of view.players) {
+      const plate = page.locator(`[data-nameplate-player="${player.id}"]`);
+      await expect(plate.locator(".player-name")).toHaveText(player.name);
+      await expect(plate.locator(".player-score strong")).toHaveText(String(player.points));
+      for (const [metric, value] of Object.entries({
+        resources: player.resourceCount, development: player.developmentCount || 0,
+        road: player.longestRoad || 0, knights: player.knightsPlayed || 0,
+      })) await expect(plate.locator(`[data-stat="${metric}"] b`)).toHaveText(String(value));
+      expect(await plate.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await expect(plate.locator(".physical-resource, .play-card, [data-development-type]")).toHaveCount(0);
+    }
+    await expect(page.locator(".remove-player")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.locator("#players").screenshot({ path: testInfo.outputPath(`nameplates-${count}-${width}.png`) });
+    if (width <= 1020) {
+      const last = page.locator(".nameplate-plaque").last();
+      await last.scrollIntoViewIfNeeded();
+      await expect(last.locator(".public-cards-link")).toBeInViewport();
+      expect(await last.locator(".public-cards-link").evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => JSON.stringify(state))).toBe(before);
+  });
+}
+
+test("nameplate controls survive peer updates and permission changes without losing focus", async ({ page }) => {
+  await story(page);
+  const viewer = await page.evaluate(() => state.viewerId);
+  const link = page.locator(`[data-public-player="${viewer}"]`);
+  await link.focus();
+  const survived = await page.evaluate(() => {
+    const button = document.querySelector(`[data-public-player="${state.viewerId}"]`);
+    state.players[1].connected = true;
+    state.players[0].resourceCount++;
+    render();
+    return document.querySelector(`[data-public-player="${state.viewerId}"]`) === button;
+  });
+  expect(survived).toBe(true);
+  await expect(link).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#public-cards-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(link).toBeFocused();
+  await expect(page.locator(".remove-player")).toHaveCount(3);
+  const target = await page.evaluate(() => state.players[1].id);
+  await page.locator(`.remove-player[data-player="${target}"]`).click();
+  await expect(page.locator("#admin-remove-dialog")).toBeVisible();
+  await page.evaluate((id) => { state.hostId = id; render(); }, target);
+  await expect(page.locator("#admin-remove-dialog")).not.toBeVisible();
+  await expect(page.locator(".remove-player")).toHaveCount(0);
+  await expect(page.locator(".admin-chip:visible")).toHaveCount(1);
+});
+
+test("nameplate status distinguishes paired turns, offline seats, mandatory discards, removal requests and victory", async ({ page }) => {
+  const view = fixture();
+  const waiting = view.players[1];
+  view.turnRole = "secondary";
+  view.pendingDiscards = { [waiting.id]: 4 };
+  view.removalRequests = [{ playerId: waiting.id, requestedAt: Date.now() }];
+  view.largestArmyHolderId = view.viewerId;
+  view.players[0].knightsPlayed = 3;
+  await story(page, view);
+  await expect(page.locator(`[data-nameplate-player="${waiting.id}"]`)).toContainText("Offline · seat saved");
+  await expect(page.locator(`[data-nameplate-player="${waiting.id}"]`)).toContainText("Must return 4 cards");
+  await expect(page.locator(`[data-nameplate-player="${waiting.id}"]`)).toContainText("Removal requested");
+  await expect(page.locator(".nameplate-plaque.current .role-label")).toHaveText("Your turn · paired");
+  await expect(page.locator(".nameplate-plaque.current .bonus-label")).toContainText("Largest Army +2");
+  await page.evaluate(() => {
+    state.phase = "finished"; state.winnerId = state.players[2].id; state.pendingDiscards = {}; state.removalRequests = [];
+    renderPlayers();
+  });
+  await expect(page.locator(".nameplate-plaque.current")).toHaveCount(0);
+  await expect(page.locator(".nameplate-plaque.winner")).toHaveCount(1);
+  await expect(page.locator(".nameplate-plaque.winner .role-label")).toHaveText("Winner");
+  await expect(page.locator(".remove-player")).toHaveCount(0);
+  await page.evaluate(() => { state.phase = "lobby"; state.winnerId = null; renderPlayers(); });
+  await expect(page.locator(".nameplate-plaque.current")).toHaveCount(0);
+  await expect(page.locator(".nameplate-plaque.winner")).toHaveCount(0);
+  await expect(page.locator(".nameplate-metrics:visible")).toHaveCount(0);
+  await expect(page.locator("[data-public-player]")).toHaveCount(0);
+  await expect(page.locator(".player-score").first()).toHaveAttribute("aria-label", "Score starts when the game begins");
 });
 
 for (const width of [1440, 390, 320]) test(`help resource conversion card matches authoritative costs and fits a ${width}px viewport`, async ({ page }, testInfo) => {

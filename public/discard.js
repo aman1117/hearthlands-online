@@ -52,8 +52,9 @@ window.DiscardDialog = class DiscardDialog {
     this.minimized = false;
     GameControls.close(false);
     document.querySelectorAll("dialog[open]").forEach((dialog) => { if (dialog !== this.dialog) dialog.close(); });
-    if (!this.dialog.open) this.dialog.showModal();
+    // Disable unavailable steppers before the dialog chooses its initial focus target.
     this.refresh();
+    if (!this.dialog.open) this.dialog.showModal();
   }
   minimize() { this.minimized = true; this.dialog.close(); }
   refresh() {

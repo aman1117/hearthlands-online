@@ -12,6 +12,7 @@ window.Tabletop = (() => {
     settlement: '<path d="M4 14 16 3l12 11v15H4z" fill="currentColor"/><path d="m1 15 15-14 15 14" fill="none" stroke="currentColor" stroke-width="3"/><path d="M13 20h6v9h-6z" fill="#fff7e1" opacity=".6"/>',
     city: '<path d="M1 30V15h10V6l7-5 7 5v10h6v14z" fill="currentColor"/><path d="M16 7h4v5h-4zm0 11h4v5h-4z" fill="#fff7e1" opacity=".6"/>',
     cards: '<rect x="3" y="3" width="20" height="25" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="8" y="6" width="21" height="25" rx="3" fill="currentColor"/><path d="m18 12 3 4 5 1-3 4 1 5-6-3-5 3 1-5-3-4 5-1z" fill="#f4d68c"/>',
+    resources: '<path d="M8 5 3 7l4 22 7-1M15 3 9 4l3 25h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><rect x="15" y="4" width="14" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m22 11 5 3v5l-5 3-5-3v-5z" fill="currentColor"/>',
     crown: '<path d="m2 8 8 6L16 3l6 11 8-6-4 19H6z" fill="currentColor"/><path d="M6 30h20" stroke="currentColor" stroke-width="2"/>',
     knight: '<path d="M7 29h20l-1-7-9-5 8 1 5-8-9-8-9 3 2 7-6 9z" fill="currentColor"/><circle cx="24" cy="8" r="1.5" fill="#fff4d8"/>',
     pointer: '<path d="m7 2 1 25 6-7 6 11 5-3-7-10 10-1z" fill="currentColor"/>',

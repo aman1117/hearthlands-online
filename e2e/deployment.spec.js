@@ -60,6 +60,8 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     }
     const host = pages[0];
     await expect(host.locator(".player-nameplate")).toHaveCount(3);
+    await expect(host.locator(".nameplate-plaque")).toHaveCount(3);
+    await expect(host.locator(".nameplate-plaque .admin-chip:visible")).toHaveCount(1);
     await host.locator("#ping-mode").click();
     await host.locator("#start-game").click();
     await host.waitForFunction(() => state.phase === "setup" && !busy);
@@ -145,10 +147,20 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     expect(exchanged[exchange.want]).toBe(actorSelf.resources[exchange.want] + 1);
     expect(await actor.evaluate((id) => state.log.filter((event) => event.type === "tradeAccepted" && event.data.tradeId === id).length, tradeId)).toBe(1);
     const ownerId = await host.evaluate(() => state.viewerId);
-    await pages[1].locator(`[data-public-player="${ownerId}"]`).click();
+    const publicLink = pages[1].locator(`[data-public-player="${ownerId}"]`);
+    await publicLink.scrollIntoViewIfNeeded();
+    const linkBox = await publicLink.boundingBox();
+    await pages[1].mouse.move(linkBox.x + linkBox.width / 2, linkBox.y + linkBox.height / 2);
+    await pages[1].mouse.down();
+    const beforeRosterUpdate = await pages[1].evaluate(() => state.revision);
+    await pages[2].reload();
+    await settled(pages[2]);
+    await pages[1].waitForFunction((revision) => state.revision > revision, beforeRosterUpdate);
+    await pages[1].mouse.up();
     await expect(pages[1].locator("#public-cards-dialog")).toBeVisible();
     await expect(pages[1].locator("#public-cards-dialog .play-card")).toHaveCount(0);
     await pages[1].locator("#public-cards-done").click();
+    await pages[1].locator("#players").screenshot({ path: testInfo.outputPath("live-nameplates.png") });
     const before = await persistentView(host);
     await contexts[0].setOffline(true);
     await host.waitForFunction(() => !bound);
