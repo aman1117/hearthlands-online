@@ -27,6 +27,8 @@ The surrounding controls are purpose-built for play: compact player nameplates, 
 
 Dice use a six-faced roll-and-settle animation. A pending roll remains visibly unconfirmed on a slow connection; only the server response chooses its final faces. Reduced-motion settings replace tumbling with a quiet pending indication.
 
+Open **? → Resource conversion** for an illustrated reference card showing the exact road, settlement, city-upgrade and development-card costs, plus 4:1 bank, 3:1 general-port and 2:1 matching-port exchanges. It is a read-only guide, not a card you buy or play.
+
 ### Shared pointers, map previews, and table controls
 
 Everyone seated at a table can point, including players waiting for their turn. Shared cursors show each player's name and colour **only while pointing inside the map**. The **Cursors** toggle stops sharing your cursor and hides other cursors. Pings are separate, explicit signals and remain available.
@@ -43,6 +45,10 @@ Everyone seated at a table can point, including players waiting for their turn. 
 | **Sound / fullscreen** | Optional sounds (off by default) and a distraction-free table |
 
 In the lobby, the host can **Shuffle island** as often as desired. Everyone sees the same persisted preview, and **the game starts on that exact map**. Joining/leaving preserves the map unless the room crosses the four/five-player board-size boundary. Five and six players share the expanded board size. Shuffling is unavailable after the game starts, so roads, resources, and settlements cannot be reset accidentally.
+
+New islands use a **constrained resource shuffle**: identical terrain types never share an edge, including the two deserts on the larger island. The correct 19-/30-hex inventories, number-token counts and nonadjacent 6/8 rule are preserved. Randomized choices keep maps varied and allow deserts throughout the island; a bounded search with a verified fallback prevents pathological random sources from hanging the server. This is a map-generation preference, not a claim that the official rules prohibit matching neighbors or that every starting site is equally strong.
+
+Existing saved boards and lobby previews are not rearranged during an update or reconnect. To use the new distribution in an existing lobby, the host must explicitly select **Shuffle island**; games already underway keep their original map.
 
 Cursors and pings are ephemeral, room-scoped messages with separate rate limits. They do not advance the game, change resources, or write game saves. Cursors disappear when the pointer leaves the map; pings briefly linger so friends can see them. All markers clear when leaving a room, reconnecting, or changing maps, and expire when updates stop. Normalized board coordinates keep them aligned even when players use different zoom levels or screen sizes.
 

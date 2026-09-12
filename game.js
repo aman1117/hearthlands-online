@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const { emptyProgressCounts, recordProgressPlay, revealedDevelopment } = require("./development-history");
+const { spreadResources } = require("./resource-layout");
 const {
   capturePlacement, recordPlacement, invalidatePlacementUndo, preserveAfterAction, undoOpportunity, undoLatestPlacement,
 } = require("./placement-undo");
@@ -54,9 +55,6 @@ function makeBoard(random = Math.random, playerCount = 6) {
   const expanded = playerCount > 4;
   const rows = expanded ? [3, 4, 5, 6, 5, 4, 3] : [3, 4, 5, 4, 3];
   const counts = expanded ? [6, 5, 6, 6, 5, 2] : [4, 3, 4, 4, 3, 1];
-  const terrain = shuffle(
-    [...RESOURCES, "desert"].flatMap((resource, i) => Array(counts[i]).fill(resource)), random,
-  );
   const vertices = [];
   const edges = [];
   const tiles = [];
@@ -71,7 +69,7 @@ function makeBoard(random = Math.random, playerCount = 6) {
       const tile = {
         id: `t${tiles.length}`, q: column, r: row - (rows.length - 1) / 2,
         x: ix * Math.sqrt(3) / 2, y: iy / 2,
-        resource: terrain[tiles.length], number: null, vertices: [], edges: [], robber: false,
+        resource: null, number: null, vertices: [], edges: [], robber: false,
       };
       for (const [dx, dy] of corners) {
         const key = `${ix + dx},${iy + dy}`;
@@ -109,6 +107,17 @@ function makeBoard(random = Math.random, playerCount = 6) {
     vertexMap.get(a).adjacentVertices.push(b);
     vertexMap.get(b).adjacentVertices.push(a);
   });
+  const tileIndices = new Map(tiles.map((tile, index) => [tile.id, index]));
+  const adjacent = tiles.map(() => []);
+  for (const edge of edges) {
+    if (edge.adjacentTiles.length !== 2) continue;
+    const [a, b] = edge.adjacentTiles.map((tileId) => tileIndices.get(tileId));
+    adjacent[a].push(b);
+    adjacent[b].push(a);
+  }
+  const terrainTypes = [...RESOURCES, "desert"];
+  const terrain = spreadResources(adjacent, counts, (items) => shuffle(items, random));
+  tiles.forEach((tile, index) => { tile.resource = terrainTypes[terrain[index]]; });
   tiles.find((tile) => tile.resource === "desert").robber = true;
 
   const numbers = expanded

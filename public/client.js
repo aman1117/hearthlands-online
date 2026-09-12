@@ -11,7 +11,7 @@ const CARDS = {
   victoryPoint: ["Victory Point", "One hidden point. Revealed automatically when you win."],
 };
 const COST_LABELS = { road: "1 wood + 1 brick", settlement: "wood + brick + sheep + wheat", city: "2 wheat + 3 ore" };
-const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, sheep: 1, wheat: 1 }, city: { wheat: 2, ore: 3 } };
+const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, sheep: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { sheep: 1, wheat: 1, ore: 1 } };
 const HEX = "0,-100 86.603,-50 86.603,50 0,100 -86.603,50 -86.603,-50";
 const art = window.Tabletop;
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map((element) => [element.id, element]));
@@ -36,6 +36,7 @@ let networkStatus = { kind: "connecting", pending: false, bound: false };
 let adminRemoveTarget = null;
 elements["art-library"].innerHTML = art.defs();
 document.querySelectorAll("[data-icon]").forEach((element) => { element.innerHTML = art.icon(element.dataset.icon); });
+elements["resource-reference"].innerHTML = GameCards.reference(COSTS);
 const presence = new MapPresence({
   socket, svg: elements.board, getState: () => state,
   announce(message) {

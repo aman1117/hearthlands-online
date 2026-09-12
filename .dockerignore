@@ -7,6 +7,7 @@
 !server.js
 !development-history.js
 !placement-undo.js
+!resource-layout.js
 !storage
 !storage/**
 !public

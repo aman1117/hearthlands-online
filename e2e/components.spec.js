@@ -5,7 +5,7 @@ const express = require("express");
 const http = require("node:http");
 const path = require("node:path");
 const { Server } = require("socket.io");
-const { createRoom, addPlayer, startGame, applyAction, publicState } = require("../game");
+const { createRoom, addPlayer, startGame, applyAction, publicState, COSTS } = require("../game");
 const { previewPlacement } = require("./ui.cjs");
 
 let server;
@@ -75,6 +75,45 @@ test("player nameplates label their statistics and explain offline seats", async
   for (const label of ["Resources", "Dev cards", "Longest road", "Played knights"]) await expect(page.locator(".player-nameplate").first()).toContainText(label);
   expect(await page.locator(".player-nameplate").first().evaluate((node) => getComputedStyle(node).backgroundImage)).toBe("none");
   await page.locator(".players-panel").screenshot({ path: testInfo.outputPath("player-nameplates.png") });
+});
+
+for (const width of [1440, 390, 320]) test(`help resource conversion card matches authoritative costs and fits a ${width}px viewport`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+  await story(page);
+  const before = await page.evaluate(() => JSON.stringify(state));
+  await page.locator("#rules-button").click();
+  await expect(page.locator("#rules-dialog")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Resource conversion reference card" })).toBeVisible();
+  for (const [kind, cost] of Object.entries(COSTS)) {
+    const row = page.locator(`[data-reference-build="${kind}"]`);
+    const displayed = await row.locator("[data-resource]").evaluateAll((nodes) =>
+      Object.fromEntries(nodes.map((node) => [node.dataset.resource, Number(node.dataset.count)])));
+    expect(displayed).toEqual(cost);
+  }
+  for (const rate of [4, 3, 2]) {
+    const card = page.locator(`[data-reference-rate="${rate}"]`);
+    await expect(card).toContainText(`${rate}:1`);
+    await expect(card).toContainText("1 different resource");
+  }
+  await expect(page.locator('[data-reference-rate="2"]')).toContainText("port's resource");
+  await expect(page.locator("#resource-reference")).toContainText("after rolling");
+  expect(await page.locator("#rules-dialog").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  expect(await page.locator("#resource-reference").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => JSON.stringify(state))).toBe(before);
+  if (width !== 320) {
+    if (width === 1440) {
+      await page.locator("#resource-reference").screenshot({ path: testInfo.outputPath(`resource-reference-${width}.png`) });
+    } else {
+      await page.locator("#rules-dialog").evaluate((node) => { node.scrollTop = 0; });
+      await page.locator("#rules-dialog").screenshot({ path: testInfo.outputPath("resource-reference-mobile-costs.png") });
+    }
+  }
+  await page.locator('[data-reference-rate="2"]').scrollIntoViewIfNeeded();
+  await expect(page.locator('[data-reference-rate="2"]')).toBeInViewport();
+  if (width === 390) await page.locator("#rules-dialog").screenshot({ path: testInfo.outputPath("resource-reference-mobile-rates.png") });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rules-dialog")).not.toBeVisible();
+  await expect(page.locator("#rules-button")).toBeFocused();
 });
 
 test("legacy public cards show known Knights without guessing discarded cards or exposing a private hand", async ({ page }) => {

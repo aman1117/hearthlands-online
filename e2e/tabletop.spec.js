@@ -121,6 +121,14 @@ test("host shuffles a shared preview, player-count changes resize it, and start 
     await t.join(4);
     await actualHost.waitForFunction(() => state.board.tiles.length === 30);
     const expanded = await actualHost.evaluate(() => state.board);
+    for (const board of [old.board, shuffled, expanded]) {
+      const byId = new Map(board.tiles.map((tile) => [tile.id, tile]));
+      for (const edge of board.edges.filter((edge) => edge.adjacentTiles.length === 2)) {
+        const [a, b] = edge.adjacentTiles.map((id) => byId.get(id));
+        expect(a.resource).not.toBe(b.resource);
+        expect([6, 8].includes(a.number) && [6, 8].includes(b.number)).toBe(false);
+      }
+    }
     expect(await actualHost.locator("#board svg").count()).toBe(0);
     await t.join(5);
     await actualHost.waitForFunction(() => state.players.length === 6);
