@@ -1,0 +1,7 @@
+[
+  {
+    "name": "catan.trackgrowth.in",
+    "bindingType": "SniEnabled",
+    "certificateId": "/subscriptions/e8920202-01dd-4705-a790-187313cdde20/resourceGroups/growth-tracker-rg/providers/Microsoft.App/managedEnvironments/growth-tracker-env/managedCertificates/mc-growth-tracker-catan-trackgrowt-9250"
+  }
+]

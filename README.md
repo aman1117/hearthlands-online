@@ -235,7 +235,9 @@ Compose uses a separate PostgreSQL service and persistent named volumes. It does
 
 ### Azure deployment
 
-**Live game:** https://hearthlands-online.yellowwater-07aa7c55.centralindia.azurecontainerapps.io
+**Live game:** https://catan.trackgrowth.in
+
+The [original Azure URL](https://hearthlands-online.yellowwater-07aa7c55.centralindia.azurecontainerapps.io) remains available and uses the same server and saved games.
 
 The Central India deployment uses a fresh dedicated `hearthlands` database and a restricted `hearthlands_app` login on the existing PostgreSQL server. Existing local games were intentionally not migrated; the local database and other applications' data were left untouched. The application connection is stored as a Container Apps secret and in the ignored, access-restricted local `.env.azure` file. It does not use the shared administrator login at runtime.
 
@@ -279,7 +281,24 @@ az deployment group create --subscription e8920202-01dd-4705-a790-187313cdde20 `
   --parameters image=<registry-image-at-sha256-digest> revisionSuffix=<unique-release>
 ```
 
-Azure CLI prompts for the omitted secure `databaseUrl` parameter; do not place a real password in a command, committed parameter file, or deployment output. The template's `gameUrl` output is the HTTPS address. A successful what-if with a placeholder secret is **not** a working database connection or a completed deployment.
+Azure CLI prompts for the omitted secure `databaseUrl` parameter; do not place a real password in a command, committed parameter file, or deployment output. The template's `gameUrl` output is the generated HTTPS address; `customGameUrl` is the configured custom address. A successful what-if with a placeholder secret is **not** a working database connection or a completed deployment.
+
+#### Custom domain and managed HTTPS
+
+`catan.trackgrowth.in` is bound to the same Container App, with a free Azure-managed certificate. The DNS records in GoDaddy must remain in place for ownership validation and automatic certificate renewal:
+
+| Type | Name | Value |
+|---|---|---|
+| CNAME | `catan` | `hearthlands-online.yellowwater-07aa7c55.centralindia.azurecontainerapps.io` |
+| TXT | `asuid.catan` | `21C93BC9052F330B8A7EC3CFCAC1874090774DC2BA7B8B6ECB4C4F1DDD994CF9` |
+
+The CNAME points directly to Azure; do not replace it with a forwarding or proxy service. If restrictive CAA records are introduced, allow `digicert.com` for the managed certificate. The root website, mail records and other subdomains are independent and were not changed.
+
+The live public binding is recorded in `infra/custom-domains.json` and loaded by `infra/main.bicep`, so a full deployment does not silently remove HTTPS from the custom hostname. The certificate is an existing environment resource, not recreated by the template. For a different environment, explicitly override `customDomainBindings=[]` initially, validate its DNS and certificate, then supply that environment's bindings. Routine releases should still use the image-only update below.
+
+Binding commands use `--location centralindia` explicitly, rather than an unrelated Azure CLI default, and reference the environment by full resource ID because it resides in `growth-tracker-rg`, not the app's resource group.
+
+**Returning to an existing game from the new URL:** browser seat storage is separate for each origin. On the original Azure URL, open your saved table, choose **Room & session → Copy private resume key**, then on `catan.trackgrowth.in` use **Resume on another device**. This restores the same server-side seat, not a new game. Keep that key private. Subsequent visits can use Saved tables on the new address. New invite links automatically use the hostname where the game is open.
 
 **Existing local games:** deployment does not automatically copy them. Preserve the local PostgreSQL cluster and private resume keys. Before a cutover, stop new local gameplay, take a consistent backup of all room snapshots **and full event history**, and import into an empty, game-owned cloud destination. Preserve request receipts, sequences, keys, and original backups; never overwrite existing cloud rows. Changing the browser origin does not transfer localStorage: players need their private resume keys at the new URL. Do not run two independently writable copies of the same migrated game.
 
@@ -325,6 +344,8 @@ The Node suite covers rules and real Socket.IO clients, including saved position
 Component-only stories use explicit render fixtures. Integration tests drive real controls through Socket.IO; failure tests gate WebSocket frames rather than adding public testing endpoints. There is no production endpoint for injecting dice rolls, resources, or game positions.
 
 `e2e/deployment.spec.js` is opt-in: set `HEARTHLANDS_DEPLOYMENT_URL` to an HTTPS game URL to exercise real cloud play, direct placement/undo, WebSocket heartbeats, offline recovery, and the saved-table Resume control after reopening the browser. It creates a new test room and deliberately does not delete it. After an explicit stop/start or later deployment, set `HEARTHLANDS_RECOVERY_FILE` to the generated private `cloud-recovery.json` artifact and run the cloud-process-restart case to verify all three saved players. Recovery artifacts contain only newly generated test-seat credentials, remain under ignored `test-results`, and must not be published.
+
+Set `HEARTHLANDS_CUSTOM_DOMAIN_URL=https://catan.trackgrowth.in` to opt into `e2e/domain.spec.js`, which verifies trusted HTTPS, redirects and reclaiming a newly created test seat from the original origin using its private key. It never touches or deletes other players' seats.
 
 ## Architecture
 

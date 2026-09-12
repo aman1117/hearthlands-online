@@ -25,6 +25,9 @@ param databaseUrl string
 @description('Game-owned schema inside the dedicated database.')
 param databaseSchema string = 'hearthlands_game'
 
+@description('Existing verified domain bindings. Preserve these on full template deployments; override with [] only for a new environment without a bound hostname.')
+param customDomainBindings array = loadJsonContent('custom-domains.json')
+
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
   scope: resourceGroup(environmentResourceGroup)
   name: environmentName
@@ -76,6 +79,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
         targetPort: 3000
         transport: 'auto'
         allowInsecure: false
+        customDomains: customDomainBindings
         traffic: [
           {
             latestRevision: true
@@ -155,3 +159,4 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
 
 output appResourceId string = app.id
 output gameUrl string = 'https://${app.properties.configuration.ingress.fqdn}'
+output customGameUrl string = empty(customDomainBindings) ? '' : 'https://${customDomainBindings[0].name}'
