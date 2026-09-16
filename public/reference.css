@@ -31,3 +31,32 @@
   .reference-plus { display: none; }
   .reference-rate-heading > span { font-size: 22px; }
 }
+
+.field-guide-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+.field-guide-shortcuts .secondary-button { min-height: 44px; flex: 1 1 200px; font-size: 12px; color: #536044; border-color: #c5b68e; background: #f2e8cf; }
+.field-guide-shortcuts button:focus-visible { outline: 3px solid #45695e; outline-offset: 2px; }
+.development-reference { scroll-margin-top: 16px; }
+.development-timing { margin: 16px 0 18px; padding: 12px 14px; border-left: 3px solid #83905e; border-radius: 0 4px 4px 0; background: #e9e7cd; color: #49593e; }
+.development-timing > strong { font: 650 13px var(--body); }
+.development-timing p { margin: 6px 0 0; font-size: 12px; line-height: 1.55; }
+.development-guide-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.development-guide-card { min-width: 0; padding: 15px; border: 1px solid #c7b383; border-radius: 6px; background: #fff7e3; box-shadow: inset 0 0 0 2px #fffbee, 0 2px 3px #604b2010; }
+.development-guide-card header { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 11px; border-bottom: 1px solid #dfd0a8; }
+.development-guide-card header > div { min-width: 0; }
+.development-guide-kind { display: block; margin-bottom: 4px; font: 650 8px/1.3 var(--body); letter-spacing: .08em; color: #8a7047; }
+.development-reference .development-guide-card h4 { margin: 0; font: 650 14px/1.35 var(--display); color: #634e31; overflow-wrap: anywhere; }
+.development-guide-emblem { display: grid; place-items: center; flex: 0 0 37px; width: 37px; height: 37px; border: 1px solid #bda16b; border-radius: 50%; background: #e6d4a3; color: #7e6941; box-shadow: inset 0 0 0 3px #fff4d180; }
+.development-guide-emblem .ui-icon { width: 23px; height: 23px; }
+.guide-knight { color: #506b7b; background: #d8dfd2; }
+.guide-roads { color: #6f764e; background: #dedbb8; }
+.guide-plenty { background: #f0dfa6; }
+.guide-monopoly { color: #8e553f; background: #ead0ab; }
+.guide-victory { color: #917038; background: #ead89c; }
+.development-guide-card p { margin: 8px 0 0; color: #43523d; font: 450 13px/1.55 var(--body); }
+.development-guide-card .development-guide-detail { font-size: 12px; color: #766345; }
+.development-guide-victory { grid-column: 1 / -1; }
+@media (max-width: 620px) {
+  .development-guide-grid { grid-template-columns: 1fr; gap: 11px; }
+  .development-guide-card { padding: 13px; }
+  .development-timing { padding: 10px 12px; }
+}

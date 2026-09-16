@@ -185,7 +185,20 @@ elements["shuffle-map"].onclick = () => send("shuffleMap", { requestId: requestI
 elements.rematch.onclick = () => send("rematch");
 elements["end-turn"].onclick = () => action({ type: "endTurn" });
 elements["buy-development"].onclick = () => action({ type: "buyDevelopment" });
-elements["rules-button"].onclick = () => elements["rules-dialog"].showModal();
+elements["rules-button"].onclick = () => {
+  elements["rules-dialog"].showModal();
+  elements["rules-dialog"].scrollTop = 0;
+};
+elements["show-resource-guide"].onclick = () => {
+  const heading = elements["resource-reference"].querySelector("h3");
+  heading.tabIndex = -1;
+  heading.focus();
+  heading.scrollIntoView({ block: "start" });
+};
+elements["show-development-guide"].onclick = () => {
+  elements["development-reference-title"].focus();
+  elements["development-reference"].scrollIntoView({ block: "start" });
+};
 elements["close-rules"].onclick = () => elements["rules-dialog"].close();
 elements["close-development"].onclick = () => elements["development-dialog"].close();
 elements["retry-connection"].onclick = () => connection.retryNow();

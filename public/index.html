@@ -190,7 +190,51 @@
       <button id="close-rules" class="dialog-close" aria-label="Close">×</button>
       <p class="eyebrow">Field guide</p>
       <h2>How to unite the Hearthlands</h2>
+      <nav class="field-guide-shortcuts" aria-label="Quick references">
+        <button id="show-resource-guide" type="button" class="secondary-button">Resource costs &amp; trades</button>
+        <button id="show-development-guide" type="button" class="secondary-button">Development card meanings</button>
+      </nav>
       <section id="resource-reference" class="resource-reference" aria-label="Resource conversion reference card"></section>
+      <section id="development-reference" class="resource-reference development-reference" aria-labelledby="development-reference-title">
+        <div class="reference-heading">
+          <span class="eyebrow">KNOW YOUR CARDS</span>
+          <h3 id="development-reference-title" tabindex="-1">Development card meanings</h3>
+          <p>These are reference examples, not anyone's hand.</p>
+        </div>
+        <div class="development-timing">
+          <strong>When can I play one?</strong>
+          <p>Play at most <b>one non-VP development card per turn</b>, before rolling or during the Action phase. It must have been bought on an earlier turn. The same limit applies to your paired activation in a 5-6-player game.</p>
+          <p>Finish any pending discards, robber/theft or free-road choices first. Playing a card before rolling does not skip your roll or allow early trading.</p>
+        </div>
+        <div class="development-guide-grid">
+          <article class="development-guide-card" data-guide-card="knight" aria-labelledby="guide-knight-title">
+            <header><span class="development-guide-emblem guide-knight" data-icon="knight"></span><div><span class="development-guide-kind">ROBBER &amp; ARMY</span><h4 id="guide-knight-title">Knight</h4></div></header>
+            <p>Move the robber to a different hex. If eligible, choose an opponent with a settlement or city beside that hex and steal <b>one random resource card</b> from them.</p>
+            <p class="development-guide-detail">No one discards cards just because you played a Knight. Played Knights stay public; at least 3 are needed for Largest Army (+2 VP), and you must exceed the current holder to take it.</p>
+          </article>
+          <article class="development-guide-card" data-guide-card="roadBuilding" aria-labelledby="guide-road-building-title">
+            <header><span class="development-guide-emblem guide-roads" data-icon="road"></span><div><span class="development-guide-kind">FREE CONSTRUCTION</span><h4 id="guide-road-building-title">Road Building</h4></div></header>
+            <p>Place <b>up to two roads for free</b>, one at a time. Normal connection and placement rules still apply; the second road may extend the first.</p>
+            <p class="development-guide-detail">You need at least one road piece and a legal spot to start. If only one road piece remains, place one. You may finish without using all free roads; the card is still spent.</p>
+          </article>
+          <article class="development-guide-card" data-guide-card="yearOfPlenty" aria-labelledby="guide-plenty-title">
+            <header><span class="development-guide-emblem guide-plenty" data-icon="wheat"></span><div><span class="development-guide-kind">TAKE FROM THE BANK</span><h4 id="guide-plenty-title">Year of Plenty</h4></div></header>
+            <p>Choose <b>two resource cards from the bank</b>. They may be the same resource or two different ones; choose only cards the bank has available.</p>
+            <p class="development-guide-detail">Also called Invention in the 2025 rules. If the entire bank has only one card left, take that one. You cannot play it when the bank is empty.</p>
+          </article>
+          <article class="development-guide-card" data-guide-card="monopoly" aria-labelledby="guide-monopoly-title">
+            <header><span class="development-guide-emblem guide-monopoly" data-icon="crown"></span><div><span class="development-guide-kind">COLLECT FROM PLAYERS</span><h4 id="guide-monopoly-title">Monopoly</h4></div></header>
+            <p>Name one resource: wood, brick, sheep, wheat or ore. <b>Every opponent gives you all their cards of that resource</b>, not just one card.</p>
+            <p class="development-guide-detail">The bank gives nothing, and development cards are never taken. You may collect zero cards if nobody holds the resource you chose.</p>
+          </article>
+          <article class="development-guide-card development-guide-victory" data-guide-card="victoryPoint" aria-labelledby="guide-victory-title">
+            <header><span class="development-guide-emblem guide-victory" data-icon="settlement"></span><div><span class="development-guide-kind">HIDDEN SCORE</span><h4 id="guide-victory-title">Victory Point</h4></div></header>
+            <p>Each card adds <b>1 hidden victory point</b>. There is no Play button: the game counts it automatically toward your score.</p>
+            <p class="development-guide-detail">VP cards do not use the one-card play allowance. Even a newly bought VP card can bring you to 10 points and win on your own turn. Unrevealed cards stay private; VP cards are shown when the game finishes.</p>
+          </article>
+        </div>
+        <p class="reference-note"><strong>After use:</strong> Road Building, Year of Plenty and Monopoly are discarded, not returned to the draw pile. You cannot trade or give away development cards. Development cards are never stolen or counted toward discards on a seven.</p>
+      </section>
       <div class="rules-grid">
         <article><strong>01</strong><h3>Found</h3><p>Place two settlements and roads in snake order. Your second settlement gathers starting resources.</p></article>
         <article><strong>02</strong><h3>Gather</h3><p>Roll each turn. Settlements collect one resource from matching tiles; cities collect two.</p></article>

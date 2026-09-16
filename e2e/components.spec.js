@@ -216,6 +216,67 @@ for (const width of [1440, 390, 320]) test(`help resource conversion card matche
   await expect(page.locator("#rules-button")).toBeFocused();
 });
 
+for (const width of [1440, 390, 320]) test(`development meanings in help cover every card without changing game state at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+  await story(page);
+  const before = await page.evaluate(() => JSON.stringify(state));
+  await page.locator("#rules-button").focus();
+  await page.keyboard.press("Enter");
+  await page.locator("#show-development-guide").click();
+  await expect(page.locator("#development-reference-title")).toBeFocused();
+  await expect(page.locator("#development-reference-title")).toBeInViewport();
+  const guide = page.getByRole("region", { name: "Development card meanings" });
+  await expect(guide.locator("[data-guide-card]")).toHaveCount(5);
+  const meanings = {
+    knight: ["Knight", "one random resource card", "No one discards", "3", "Largest Army"],
+    roadBuilding: ["Road Building", "up to two roads for free", "legal spot", "card is still spent"],
+    yearOfPlenty: ["Year of Plenty", "two resource cards from the bank", "same resource", "Invention", "bank is empty"],
+    monopoly: ["Monopoly", "Every opponent gives you all", "bank gives nothing", "zero cards"],
+    victoryPoint: ["Victory Point", "1 hidden victory point", "no Play button", "newly bought", "10 points"],
+  };
+  for (const [type, phrases] of Object.entries(meanings)) {
+    const card = guide.locator(`[data-guide-card="${type}"]`);
+    await expect(card.locator("h4")).toHaveText(phrases[0]);
+    for (const phrase of phrases.slice(1)) await expect(card).toContainText(phrase);
+    await expect(card.locator(".development-guide-emblem svg")).toHaveCount(1);
+    expect(await card.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  }
+  await expect(guide.locator(".development-timing")).toContainText("one non-VP development card per turn");
+  await expect(guide.locator(".development-timing")).toContainText("before rolling");
+  await expect(guide.locator(".development-timing")).toContainText("earlier turn");
+  await expect(guide.locator(".development-timing")).toContainText("paired activation");
+  await expect(guide).toContainText("cannot trade or give away development cards");
+  await expect(guide.locator("button, [data-card], .play-card")).toHaveCount(0);
+  expect(await page.locator("#rules-dialog").evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  if (width !== 320) await page.locator("#rules-dialog").screenshot({ path: testInfo.outputPath(`development-meanings-${width}.png`) });
+  await guide.locator('[data-guide-card="victoryPoint"]').scrollIntoViewIfNeeded();
+  await expect(guide.locator("#guide-victory-title")).toBeInViewport();
+  if (width === 390) await page.locator("#rules-dialog").screenshot({ path: testInfo.outputPath("development-meanings-mobile-end.png") });
+  expect(await page.evaluate(() => JSON.stringify(state))).toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#rules-dialog")).not.toBeVisible();
+  await expect(page.locator("#rules-button")).toBeFocused();
+  await page.locator("#rules-button").click();
+  await expect(page.locator("#show-resource-guide")).toBeInViewport();
+  await page.locator("#show-resource-guide").click();
+  await expect(page.locator("#resource-reference h3")).toBeFocused();
+  await expect(page.locator("#resource-reference h3")).toBeInViewport();
+});
+
+test("development meanings are reference-only even without any held development cards", async ({ page }) => {
+  const view = fixture();
+  for (const player of view.players) {
+    player.developmentCount = 0;
+    if (player.developmentCards) player.developmentCards = [];
+  }
+  await story(page, view);
+  await page.locator("#rules-button").click();
+  await page.locator("#show-development-guide").click();
+  await expect(page.locator("#development-reference [data-guide-card]")).toHaveCount(5);
+  await expect(page.locator("#development-reference")).toContainText("not anyone's hand");
+  await expect(page.locator("#development-cards .play-card")).toHaveCount(0);
+});
+
 test("legacy public cards show known Knights without guessing discarded cards or exposing a private hand", async ({ page }) => {
   const view = fixture();
   const owner = view.players.find((player) => player.id === view.viewerId);

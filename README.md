@@ -31,6 +31,8 @@ Dice use a six-faced roll-and-settle animation. A pending roll remains visibly u
 
 Open **? → Resource conversion** for an illustrated reference card showing the exact road, settlement, city-upgrade and development-card costs, plus 4:1 bank, 3:1 general-port and 2:1 matching-port exchanges. It is a read-only guide, not a card you buy or play.
 
+Open **? → Development card meanings** for illustrated explanations of Knight, Road Building, Year of Plenty, Monopoly and Victory Point cards. The guide covers what each does, when it can be played, finite-bank and road-piece limits, and the hidden-VP exception. It shows reference examples only, never another player's private hand.
+
 ### Shared pointers, map previews, and table controls
 
 Everyone seated at a table can point, including players waiting for their turn. Shared cursors show each player's name and colour **only while pointing inside the map**. The **Cursors** toggle stops sharing your cursor and hides other cursors. Pings are separate, explicit signals and remain available.
