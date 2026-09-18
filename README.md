@@ -104,6 +104,8 @@ Player trading always involves the active primary player. Other players may prop
 
 ### Trading timing and reliable offers
 
+The trading post separates **Bank / ports - Instant exchange** from **With a player - Send an offer**, with a visible **Selected** label and destination banner. **Trade with bank** exchanges only with the bank at your best rate; no player receives those cards. New player offers start with **no recipient selected**. Choose a named player first, then review **You give to [name]**, **You receive from [name]**, and **Send offer to [name]**. Counteroffers keep the actual other party selected, and acceptance names the sender. Changing tabs never submits a trade.
+
 **No player or bank/port trading before the production roll.** First roll, collect resources, and fully resolve any seven (discards, robber, theft); then trade during the Action phase. An eligible older development card may be played before rolling, but that does not unlock trading. The interface explains the current restriction and the server rejects out-of-phase requests.
 
 Trade responses are bound to the exact offer ID and terms, never whichever offer happens to be displayed later. Routine state/presence updates preserve the Accept button and draft inputs instead of replacing them mid-click. A replacement offer gets new response controls, so pressing an old button cannot accept new terms. Counteroffers default to the actual other party.

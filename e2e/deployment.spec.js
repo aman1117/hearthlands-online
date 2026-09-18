@@ -117,9 +117,14 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     }
     expect(exchange, "Legal setup should leave two different resources for a live trade").toBeTruthy();
     await actor.locator('[data-tab="player"]').click();
+    await expect(actor.locator('[data-tab="player"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(actor.locator(".player-destination")).toContainText("not a bank exchange");
+    await expect(actor.locator('#trade-target [aria-checked="true"]')).toHaveCount(0);
     await choose(actor, "trade-target", exchange.self.id);
     await actor.locator(`#give-${exchange.give}`).fill("1");
     await actor.locator(`#want-${exchange.want}`).fill("1");
+    await expect(actor.locator("#offer-submit")).toHaveText(`Send offer to ${exchange.self.name}`);
+    await expect(actor.locator("#trade-recipient")).toHaveText(`Offer to: ${exchange.self.name}`);
     await actor.locator("#offer-submit").click();
     await exchange.other.waitForFunction(() => !busy && state.trade?.targetId === state.viewerId);
     const tradeId = await exchange.other.evaluate(() => state.trade.id);
@@ -130,6 +135,7 @@ test("public deployment supports real three-player play, WebSockets, offline rec
     await expect(offerCard).toHaveAttribute("data-trade-state", "ready");
     await offerCard.screenshot({ path: testInfo.outputPath("live-trade-offer.png") });
     const button = exchange.other.locator("#accept-trade");
+    await expect(button).toHaveText(`Accept trade with ${actorSelf.name}`);
     await button.scrollIntoViewIfNeeded();
     const box = await button.boundingBox();
     await exchange.other.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

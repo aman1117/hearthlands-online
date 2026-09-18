@@ -39,7 +39,7 @@ window.TradePanel = class TradePanel {
     };
     return `<article id="trade-offer-card" class="trade-offer table-trade-card" aria-labelledby="trade-offer-title">
       <header class="offer-heading"><span class="offer-seal" aria-hidden="true">${Tabletop.icon("cards")}</span>
-        <div><span class="offer-eyebrow">TRADING POST</span><h3 id="trade-offer-title">Trade offer</h3></div>
+        <div><span class="offer-eyebrow">PLAYER TRADE &middot; NOT THE BANK</span><h3 id="trade-offer-title">Trade offer</h3></div>
         <span class="offer-badge">${recipient ? "For you" : sender ? "Your offer" : "At the table"}</span>
       </header>
       <div class="offer-participants" aria-label="${this.escape(`${from.name} offers ${target.name}`)}">
@@ -66,10 +66,11 @@ window.TradePanel = class TradePanel {
     if (scope !== this.scope) {
       this.reset();
       this.scope = scope;
-      this.root.innerHTML = '<div id="current-trade"></div><p id="trade-status" class="trade-feedback" role="status"></p><div id="trade-targets"></div>' +
-        `<h3 class="trade-side-heading">You give</h3>${this.bundleInputs("give", state.players.find((p) => p.id === state.viewerId).resources)}` +
-        `<h3 class="trade-side-heading">You receive</h3>${this.bundleInputs("want")}` +
-        '<p id="trade-draft-status" class="trade-feedback" role="status"></p><button id="offer-submit" class="secondary-button">Send offer</button>';
+      this.root.innerHTML = '<div id="current-trade"></div><div class="trade-destination player-destination"><strong>Trading with a player</strong><p>This is not a bank exchange. Choose who receives your offer; cards move only if they accept.</p></div><p id="trade-status" class="trade-feedback" role="status"></p><div id="trade-targets"></div>' +
+        '<p id="trade-recipient" class="trade-recipient" role="status"></p>' +
+        `<h3 id="trade-give-heading" class="trade-side-heading">You give</h3>${this.bundleInputs("give", state.players.find((p) => p.id === state.viewerId).resources)}` +
+        `<h3 id="trade-want-heading" class="trade-side-heading">You receive</h3>${this.bundleInputs("want")}` +
+        '<p id="trade-draft-status" class="trade-feedback" role="status"></p><button id="offer-submit" class="secondary-button" aria-describedby="trade-recipient trade-draft-status">Choose a player first</button>';
       document.getElementById("offer-submit").onclick = () => this.sendOffer();
     }
     const trade = state.trade;
@@ -114,8 +115,8 @@ window.TradePanel = class TradePanel {
     const targets = state.players.filter((p) => p.id !== state.viewerId &&
       (state.currentPlayerId === state.viewerId || p.id === state.currentPlayerId));
     const rosterSignature = JSON.stringify(targets.map(({ id, name, color }) => [id, name, color]));
-    const selected = trade?.targetId === state.viewerId ? trade.fromId : trade?.fromId === state.viewerId ? trade.targetId : targets[0]?.id;
-    const picker = GameControls.playerPicker("trade-target", "Trade with", targets, { selected, onChange: () => this.refresh() });
+    const selected = trade?.targetId === state.viewerId ? trade.fromId : trade?.fromId === state.viewerId ? trade.targetId : "";
+    const picker = GameControls.playerPicker("trade-target", "1. Choose the player who gets your offer", targets, { selected, onChange: () => this.refresh() });
     if (rosterSignature !== this.rosterSignature) {
       document.getElementById("trade-targets").innerHTML = picker;
       this.rosterSignature = rosterSignature;
@@ -144,19 +145,25 @@ window.TradePanel = class TradePanel {
     for (const input of this.root.querySelectorAll(".counter-input input")) input.disabled = Boolean(unavailable);
     for (const radio of this.root.querySelectorAll('[data-picker="trade-target"]')) radio.disabled = Boolean(unavailable);
     const give = this.readBundle("give"), want = this.readBundle("want");
+    const target = state.players.find((p) => p.id === GameControls.read("trade-target") && p.id !== state.viewerId &&
+      (state.currentPlayerId === state.viewerId || p.id === state.currentPlayerId));
+    document.getElementById("trade-recipient").textContent = target ? `Offer to: ${target.name}${target.connected ? "" : " (offline)"}` : "No player selected. Choose a recipient above.";
+    document.getElementById("trade-give-heading").textContent = target ? `You give to ${target.name}` : "You give";
+    document.getElementById("trade-want-heading").textContent = target ? `You receive from ${target.name}` : "You receive";
     const valid = [give, want].every((bundle) => resources.every((r) => Number.isSafeInteger(bundle[r]) && bundle[r] >= 0 && bundle[r] <= (state.boardPlayerCount > 4 ? 24 : 19)));
     const giveTotal = Object.values(give).reduce((a, b) => a + b, 0), wantTotal = Object.values(want).reduce((a, b) => a + b, 0);
     const missing = resources.filter((r) => give[r] > self.resources[r]).map((r) => `${give[r] - self.resources[r]} more ${r}`);
-    const draftReason = unavailable || (!valid ? "Choose whole amounts within the card supply." :
+    const draftReason = unavailable || (!target ? "Choose a player before sending an offer." :
+      !valid ? "Choose whole amounts within the card supply." :
       !giveTotal || !wantTotal ? "Choose at least one resource on each side." :
       resources.some((r) => give[r] && want[r]) ? "A resource cannot appear on both sides of a trade." :
       missing.length ? `You need ${missing.join(", ")} to offer this trade.` :
       !state.legal.canOfferTrade ? "No eligible trading partner is available right now." : "");
     document.getElementById("trade-draft-status").textContent = draftReason ||
-      `${this.bundleText(give)} for ${this.bundleText(want)}. Only these terms will be sent.`;
+      `You give ${this.bundleText(give)} to ${target.name} and receive ${this.bundleText(want)} from ${target.name} if they accept.`;
     const submit = document.getElementById("offer-submit");
     submit.disabled = Boolean(draftReason);
-    submit.textContent = trade && party ? "Send counteroffer" : "Send offer";
+    submit.textContent = !target ? "Choose a player first" : `${trade && party ? "Send counteroffer" : "Send offer"} to ${target.name}`;
     const responseStatus = document.getElementById("trade-response-status");
     if (responseStatus && trade) {
       const offerReason = state.tradeUnavailableReason === "offered-resources-spent"
@@ -166,7 +173,7 @@ window.TradePanel = class TradePanel {
       const shortage = party ? resources.filter((r) => required[r] > self.resources[r]).map((r) => `${required[r] - self.resources[r]} more ${r}`) : [];
       const responseReason = connection || phase || offerReason || (shortage.length ? `You need ${shortage.join(", ")} for this offer.` :
         trade.targetId === state.viewerId ? "Both sides exchange together. Review the cards before accepting." :
-          trade.fromId === state.viewerId ? `Waiting for the recipient. ${state.players.find((p) => p.id === trade.targetId)?.connected ? "" : "Their seat is offline; the offer stays saved."}` :
+          trade.fromId === state.viewerId ? `Waiting for ${state.players.find((p) => p.id === trade.targetId)?.name}. ${state.players.find((p) => p.id === trade.targetId)?.connected ? "" : "Their seat is offline; the offer stays saved."}` :
             "This offer is between the named players.");
       responseStatus.textContent = responseReason;
       document.getElementById("trade-offer-card").dataset.tradeState = !this.isReady() ? "offline" : this.isBusy() ? "pending" :
@@ -174,7 +181,7 @@ window.TradePanel = class TradePanel {
       const accept = document.getElementById("accept-trade");
       if (accept) {
         accept.disabled = Boolean(connection || phase || offerReason || shortage.length);
-        accept.textContent = this.isBusy() ? "Confirming..." : "Accept trade";
+        accept.textContent = this.isBusy() ? "Confirming..." : `Accept trade with ${state.players.find((p) => p.id === trade.fromId)?.name}`;
       }
       const decline = document.getElementById("decline-trade"), cancel = document.getElementById("cancel-trade");
       if (decline) decline.disabled = Boolean(connection || phase);

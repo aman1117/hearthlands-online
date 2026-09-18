@@ -165,9 +165,9 @@
           <section id="trade-section" class="panel-section hidden">
             <details id="trade-details" open>
               <summary>Trading post</summary>
-              <div class="trade-tabs">
-                <button class="trade-tab active" data-tab="bank">Bank</button>
-                <button class="trade-tab" data-tab="player">Player</button>
+              <div class="trade-tabs" role="group" aria-label="Trade destination">
+                <button type="button" class="trade-tab active" data-tab="bank" aria-pressed="true" aria-controls="bank-trade"><strong>Bank / ports</strong><small>Instant exchange</small><span class="trade-mode-state">Selected</span></button>
+                <button type="button" class="trade-tab" data-tab="player" aria-pressed="false" aria-controls="player-trade"><strong>With a player</strong><small>Send an offer</small><span class="trade-mode-state">Choose</span></button>
               </div>
               <div id="bank-trade" class="trade-form"></div>
               <div id="player-trade" class="trade-form hidden"></div>

@@ -334,6 +334,48 @@ test("resource trade controls use illustrated keyboard-operable choices, not nat
   await page.locator("#trade-section").screenshot({ path: testInfo.outputPath("trading-post.png") });
 });
 
+test("a departed trade recipient is cleared instead of silently selecting another player", async ({ page }) => {
+  await story(page);
+  await page.locator('[data-tab="player"]').click();
+  await page.locator('#trade-target [role="radio"]').first().click();
+  await page.locator("#give-wood").fill("1");
+  await page.locator("#want-ore").fill("1");
+  await expect(page.locator("#offer-submit")).toBeEnabled();
+  await page.evaluate(() => {
+    const departed = GameControls.read("trade-target");
+    state.players = state.players.filter((player) => player.id !== departed);
+    trading.render();
+  });
+  await expect(page.locator('#trade-target [role="radio"]')).toHaveCount(2);
+  await expect(page.locator('#trade-target [aria-checked="true"]')).toHaveCount(0);
+  await expect(page.locator("#trade-recipient")).toContainText("No player selected");
+  await expect(page.locator("#give-wood")).toHaveValue("1");
+  await expect(page.locator("#offer-submit")).toBeDisabled();
+  await expect(page.locator("#offer-submit")).toHaveText("Choose a player first");
+});
+
+test("even a sole eligible player must be explicitly chosen and names render as text", async ({ page }) => {
+  const view = fixture();
+  const other = view.players.find((player) => player.id !== view.viewerId);
+  other.name = "LongName<&>1234567890";
+  other.connected = true;
+  view.currentPlayerId = other.id;
+  await story(page, view);
+  await page.locator('[data-tab="player"]').click();
+  await expect(page.locator('#trade-target [role="radio"]')).toHaveCount(1);
+  await expect(page.locator('#trade-target [aria-checked="true"]')).toHaveCount(0);
+  await page.locator("#give-wood").fill("1");
+  await page.locator("#want-ore").fill("1");
+  await expect(page.locator("#offer-submit")).toBeDisabled();
+  await page.locator('#trade-target [role="radio"]').click();
+  await expect(page.locator("#offer-submit")).toHaveText(`Send offer to ${other.name}`);
+  await expect(page.locator("#trade-recipient")).toHaveText(`Offer to: ${other.name}`);
+  await expect(page.locator("#trade-give-heading")).toHaveText(`You give to ${other.name}`);
+  await expect(page.locator("#offer-submit")).toBeEnabled();
+  await page.setViewportSize({ width: 320, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 for (const width of [1440, 390, 320]) test(`earthy trade offer shows exact resource cards and usable actions at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
   const view = fixture();

@@ -97,6 +97,97 @@ async function offer(t, give, want) {
 }
 function holdings(room) { return { bank: room.bank, players: room.players.map((player) => player.resources) }; }
 
+for (const width of [1440, 390, 320]) test(`trade destinations and named recipients prevent accidental offers at ${width}px`, async ({ browser }, testInfo) => {
+  const t = await table(browser);
+  try {
+    const [actor, mira, ellis] = t.pages;
+    await actor.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
+    await expect(actor.locator('[data-tab="bank"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(actor.locator(".bank-destination")).toContainText("No player receives these cards");
+    await expect(actor.locator("#bank-submit")).toContainText("Trade with bank");
+    await actor.locator("#trade-section").screenshot({ path: testInfo.outputPath("bank-destination.png") });
+    await actor.locator('[data-tab="player"]').click();
+    await expect(actor.locator('[data-tab="bank"]')).toHaveAttribute("aria-pressed", "false");
+    await expect(actor.locator('[data-tab="player"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(actor.locator("#bank-trade")).not.toBeVisible();
+    await expect(actor.locator(".player-destination")).toContainText("not a bank exchange");
+    await expect(actor.locator('#trade-target [aria-checked="true"]')).toHaveCount(0);
+    await expect(actor.locator("#trade-recipient")).toContainText("No player selected");
+    await actor.locator("#give-wood").fill("1");
+    await actor.locator("#want-wheat").fill("1");
+    await expect(actor.locator("#offer-submit")).toBeDisabled();
+    await expect(actor.locator("#trade-draft-status")).toContainText("Choose a player");
+    await actor.evaluate(() => trading.sendOffer());
+    expect(t.wires[0].requests.filter((request) => request.type === "offerTrade")).toHaveLength(0);
+    await choose(actor, "trade-target", t.room.players[1].id);
+    await expect(actor.locator("#offer-submit")).toHaveText("Send offer to Mira");
+    await actor.keyboard.press("ArrowRight");
+    await expect(actor.locator(`#trade-target [data-value="${t.room.players[2].id}"]`)).toHaveAttribute("aria-checked", "true");
+    await expect(actor.locator("#trade-recipient")).toHaveText("Offer to: Ellis");
+    await expect(actor.locator("#trade-give-heading")).toHaveText("You give to Ellis");
+    await expect(actor.locator("#trade-want-heading")).toHaveText("You receive from Ellis");
+    await expect(actor.locator("#offer-submit")).toHaveText("Send offer to Ellis");
+    await expect(actor.locator("#trade-draft-status")).toContainText("1 wood to Ellis");
+    const revision = await actor.evaluate(() => state.revision);
+    await mira.reload();
+    await actor.waitForFunction((revision) => state.revision > revision, revision);
+    await expect(actor.locator("#offer-submit")).toHaveText("Send offer to Ellis");
+    await actor.locator('[data-tab="bank"]').click();
+    await actor.locator('[data-tab="player"]').click();
+    await expect(actor.locator("#give-wood")).toHaveValue("1");
+    await expect(actor.locator("#offer-submit")).toHaveText("Send offer to Ellis");
+    expect((await t.read()).trade).toBeNull();
+    expect(t.wires[0].requests.filter((request) => request.type === "offerTrade" || request.type === "bankTrade")).toHaveLength(0);
+    expect(await actor.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await actor.locator("#trade-section").screenshot({ path: testInfo.outputPath("player-destination.png") });
+    const before = holdings(await t.read());
+    await actor.locator("#offer-submit").click();
+    await ellis.waitForFunction(() => state.trade?.targetId === state.viewerId);
+    expect((await t.read()).trade.targetId).toBe(t.room.players[2].id);
+    expect(holdings(await t.read())).toEqual(before);
+    await expect(ellis.locator("#accept-trade")).toHaveText("Accept trade with Rowan");
+    await expect(ellis.locator("#offer-submit")).toHaveText("Send counteroffer to Rowan");
+    await expect(actor.locator("#trade-response-status")).toContainText("Waiting for Ellis");
+    await mira.waitForFunction(() => Boolean(state.trade));
+    await expect(mira.locator("#accept-trade")).toHaveCount(0);
+    await ellis.locator("#accept-trade").click();
+    await actor.waitForFunction(() => !state.trade && !busy);
+    const after = holdings(await t.read());
+    expect(after.bank).toEqual(before.bank);
+    expect(after.players[1]).toEqual(before.players[1]);
+    expect(after.players[0].wood).toBe(before.players[0].wood - 1);
+    expect(after.players[2].wood).toBe(before.players[2].wood + 1);
+    expect(after.players[0].wheat).toBe(before.players[0].wheat + 1);
+    expect(after.players[2].wheat).toBe(before.players[2].wheat - 1);
+    await expect(actor.locator('#trade-target [aria-checked="true"]')).toHaveCount(0);
+    await expect(actor.locator("#offer-submit")).toBeDisabled();
+    expect(t.errors).toEqual([]);
+  } finally { await t.close(); }
+});
+
+test("bank exchanges never send a drafted player offer or change another player's cards", async ({ browser }) => {
+  const t = await table(browser);
+  try {
+    const actor = t.pages[0];
+    await draft(actor, t.room.players[1].id);
+    const before = holdings(await t.read());
+    const rate = await actor.evaluate(() => me().tradeRates.wood);
+    await perform(actor, { type: "bankTrade", giveResource: "wood", receiveResource: "brick" });
+    const after = holdings(await t.read());
+    expect((await t.read()).trade).toBeNull();
+    expect(after.players.slice(1)).toEqual(before.players.slice(1));
+    expect(after.players[0].wood).toBe(before.players[0].wood - rate);
+    expect(after.players[0].brick).toBe(before.players[0].brick + 1);
+    expect(after.bank.wood).toBe(before.bank.wood + rate);
+    expect(after.bank.brick).toBe(before.bank.brick - 1);
+    expect(t.wires[0].requests.filter((request) => request.type === "offerTrade")).toHaveLength(0);
+    await actor.locator('[data-tab="player"]').click();
+    await expect(actor.locator("#trade-recipient")).toHaveText("Offer to: Mira");
+    await expect(actor.locator("#give-wood")).toHaveValue("1");
+    expect(t.errors).toEqual([]);
+  } finally { await t.close(); }
+});
+
 for (const postgres of [false, true]) test(`${postgres ? "PostgreSQL" : "SQLite"} Accept survives a peer update between pointer down and pointer up`, async ({ browser }) => {
   test.skip(postgres && !process.env.TEST_DATABASE_URL, "Set the isolated loopback test database URL.");
   const t = await table(browser, { postgres });

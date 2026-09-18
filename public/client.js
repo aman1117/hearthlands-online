@@ -502,7 +502,12 @@ document.querySelectorAll(".trade-tab").forEach((button) => {
   button.onclick = () => tradeTab(button.dataset.tab);
 });
 function tradeTab(tabName) {
-  document.querySelectorAll(".trade-tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
+  document.querySelectorAll(".trade-tab").forEach((button) => {
+    const active = button.dataset.tab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.querySelector(".trade-mode-state").textContent = active ? "Selected" : "Choose";
+  });
   elements["bank-trade"].classList.toggle("hidden", tabName !== "bank");
   elements["player-trade"].classList.toggle("hidden", tabName !== "player");
 }
@@ -879,7 +884,7 @@ function updateBankLabel() {
   const give = GameControls.read("bank-give");
   const receive = GameControls.read("bank-receive");
   const rate = me().tradeRates?.[give] || 4;
-  submit.innerHTML = `<span>Give <b>${rate} ${give}</b></span><span aria-hidden="true">→</span><span>Get <b>1 ${receive}</b></span>`;
+  submit.innerHTML = `<strong>Trade with bank</strong><span>Give ${rate} ${give} &rarr; receive 1 ${receive}</span>`;
   submit.disabled = !legal().canBankTrade || give === receive || me().resources[give] < rate || !state.bank?.[receive];
   const help = document.querySelector("#bank-trade-help");
   if (help) {
@@ -897,7 +902,7 @@ function renderTrade() {
   const visible = !["lobby", "setup", "finished"].includes(state.phase);
   elements["trade-section"].classList.toggle("hidden", !visible);
   if (!visible) { trading.reset(); return; }
-  elements["bank-trade"].innerHTML = `${GameControls.resourcePicker("bank-give", "Spend from your hand · best port rate", { counts: me().resources, rates: me().tradeRates, onChange: updateBankLabel })}<div class="trade-divider"><span>EXCHANGE</span></div>${GameControls.resourcePicker("bank-receive", "Take one from the bank", { selected: "brick", counts: state.bank, disabledValues: RESOURCES.filter((r) => !state.bank[r]), onChange: updateBankLabel })}<p id="bank-trade-help" class="trade-feedback" role="status"></p><button id="bank-submit" class="secondary-button exchange-button">Trade</button>`;
+  elements["bank-trade"].innerHTML = `<div class="trade-destination bank-destination"><strong>Trading with the bank</strong><p>Instant exchange at your best bank / port rate. No player receives these cards.</p></div>${GameControls.resourcePicker("bank-give", "You give to the bank", { counts: me().resources, rates: me().tradeRates, onChange: updateBankLabel })}<div class="trade-divider"><span>BANK EXCHANGE</span></div>${GameControls.resourcePicker("bank-receive", "You receive from the bank", { selected: "brick", counts: state.bank, disabledValues: RESOURCES.filter((r) => !state.bank[r]), onChange: updateBankLabel })}<p id="bank-trade-help" class="trade-feedback" role="status"></p><button id="bank-submit" class="secondary-button exchange-button" aria-describedby="bank-trade-help">Trade with bank</button>`;
   document.querySelector("#bank-submit").onclick = () => action({
     type: "bankTrade", giveResource: GameControls.read("bank-give"), receiveResource: GameControls.read("bank-receive"),
   });
