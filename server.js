@@ -7,7 +7,7 @@ const express = require("express");
 const { Server } = require("socket.io");
 const {
   activePlayers, addPlayer, appendPublicEvent, applyAction, createRoom, ensureMapPreview,
-  normalizePublicEvents, publicState, resignPlayer, shuffleMap, startGame,
+  normalizePublicEvents, publicState, resignPlayer, shuffleMap, startGame, tradeList,
 } = require("./game");
 const { createStorage, StorageError } = require("./storage");
 const { migratePublicDevelopmentHistory } = require("./development-history");
@@ -624,6 +624,40 @@ function createGameServer(options = {}) {
     return work;
   }
 
+  function openLobby(original, actorId, event) {
+    const remaining = activePlayers(original);
+    if (!remaining.length) throw new Error("A new game requires at least one remaining player.");
+    const { room } = createRoom(remaining[0].name);
+    remaining.slice(1).forEach((oldPlayer) => addPlayer(room, oldPlayer.name));
+    room.players.forEach((newPlayer, index) => {
+      const oldPlayer = remaining[index];
+      Object.assign(newPlayer, {
+        id: oldPlayer.id, reconnectToken: oldPlayer.reconnectToken, color: oldPlayer.color,
+        connected: Boolean(recipientFor(original, oldPlayer)),
+        ...(oldPlayer.entry ? { entry: oldPlayer.entry } : {}),
+      });
+    });
+    room.retiredPlayers = [...(original.retiredPlayers || []), ...original.players.filter((candidate) => candidate.resigned)];
+    room.removedPlayers = original.removedPlayers || [];
+    room.requests = original.requests;
+    room.clientSequences = original.clientSequences;
+    room.lastReceipts = original.lastReceipts;
+    room.eventSequence = original.eventSequence || 0;
+    room.eventOutbox = [];
+    room.log = original.log;
+    room.removalRequests = (original.removalRequests || []).filter((request) =>
+      remaining.some((candidate) => candidate.id === request.playerId));
+    room.hostId = original.hostId;
+    chooseHost(room);
+    room.code = original.code;
+    room.createdAt = original.createdAt;
+    room.revision = original.revision;
+    room.mapVersion = original.mapVersion ?? 0;
+    ensureMapPreview(room, random);
+    appendPublicEvent(room, event, now());
+    return room;
+  }
+
   io.on("connection", (socket) => {
     function handlePresence(event, kind, limit) {
       socket.on(event, (payload, callback) => {
@@ -678,6 +712,29 @@ function createGameServer(options = {}) {
     }
     handlePresence("mapPointer", "pointer", 20);
     handlePresence("mapPing", "ping", 2);
+
+    // Ephemeral "is preparing a counteroffer" hint; never stored, and receivers expire it on their own.
+    socket.on("tradeDrafting", (payload, callback) => {
+      const at = now();
+      const reply = typeof callback === "function" ? callback : () => {};
+      socket.data.tradeDraftRates = (socket.data.tradeDraftRates || []).filter((sentAt) => at - sentAt < 1000);
+      if (socket.data.tradeDraftRates.length >= 4) { reply({ ok: false, throttled: true }); return; }
+      socket.data.tradeDraftRates.push(at);
+      try {
+        const { room, player } = session(socket);
+        requireAvailable(room);
+        const tradeId = payload?.tradeId ?? null;
+        if (tradeId !== null && !tradeList(room).some((trade) => trade.id === tradeId)) {
+          throw new Error("That trade is no longer current.");
+        }
+        for (const other of activePlayers(room)) {
+          if (other.id !== player.id) recipientFor(room, other)?.emit("tradeDrafting", { playerId: player.id, tradeId, at });
+        }
+        reply({ ok: true });
+      } catch (error) {
+        reply(failure(error));
+      }
+    });
 
     function handle(event, operation) {
       socket.on(event, async (payload, callback) => {
@@ -778,7 +835,8 @@ function createGameServer(options = {}) {
       if (action.expectedTurnNumber !== undefined && action.expectedTurnNumber !== room.turnNumber) {
         throw new RequestError("STALE_TURN", "This action belongs to an earlier or different turn. Review the current turn before acting.");
       }
-      if (["respondTrade", "cancelTrade"].includes(action.type) && action.tradeId !== room.trade?.id) {
+      if (["respondTrade", "cancelTrade", "confirmTrade"].includes(action.type) &&
+          !tradeList(room).some((trade) => trade.id === action.tradeId)) {
         throw new Error("This trade offer has changed. Review the new offer.");
       }
       applyAction(room, actorId, action, random);
@@ -855,36 +913,22 @@ function createGameServer(options = {}) {
       if (original.phase !== "finished" || original.hostId !== actorId) {
         throw new Error("Only the host can start a rematch after victory.");
       }
-      const remaining = activePlayers(original);
-      if (!remaining.length) throw new Error("A rematch requires at least one remaining player.");
-      const { room } = createRoom(remaining[0].name);
-      remaining.slice(1).forEach((oldPlayer) => addPlayer(room, oldPlayer.name));
-      room.players.forEach((newPlayer, index) => {
-        const oldPlayer = remaining[index];
-        Object.assign(newPlayer, {
-          id: oldPlayer.id, reconnectToken: oldPlayer.reconnectToken, color: oldPlayer.color,
-          connected: Boolean(recipientFor(original, oldPlayer)),
-          ...(oldPlayer.entry ? { entry: oldPlayer.entry } : {}),
-        });
-      });
-      room.retiredPlayers = [...(original.retiredPlayers || []), ...original.players.filter((candidate) => candidate.resigned)];
-      room.removedPlayers = original.removedPlayers || [];
-      room.requests = original.requests;
-      room.clientSequences = original.clientSequences;
-      room.lastReceipts = original.lastReceipts;
-      room.eventSequence = original.eventSequence || 0;
-      room.eventOutbox = [];
-      room.log = original.log;
-      room.removalRequests = (original.removalRequests || []).filter((request) => remaining.some((candidate) => candidate.id === request.playerId));
-      room.hostId = original.hostId;
-      chooseHost(room);
-      room.code = original.code;
-      room.createdAt = original.createdAt;
-      room.revision = original.revision;
-      room.mapVersion = original.mapVersion ?? 0;
-      ensureMapPreview(room, random);
-      appendPublicEvent(room, { type: "game.rematched", actorId, message: "The administrator opened a rematch lobby.", data: {} }, now());
-      return { room };
+      return { room: openLobby(original, actorId, {
+        type: "game.rematched", actorId, message: "The administrator opened a rematch lobby.", data: {},
+      }) };
+    }));
+
+    handle("restartGame", (payload) => mutation(socket, "restartGame", payload, (original, actorId) => {
+      if (original.hostId !== actorId) {
+        throw new RequestError("ADMIN_REQUIRED", "Only the administrator can end the current game.");
+      }
+      if (["lobby", "finished"].includes(original.phase)) {
+        throw new RequestError("REJECTED", "There is no game in progress to end.");
+      }
+      return { room: openLobby(original, actorId, {
+        type: "game.restarted", actorId,
+        message: "The administrator ended the current game and opened a new lobby.", data: {},
+      }) };
     }));
 
     handle("resignGame", (payload) => mutation(socket, "resignGame", payload, (room, actorId) => {

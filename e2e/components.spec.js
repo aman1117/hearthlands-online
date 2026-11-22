@@ -77,6 +77,22 @@ test("player nameplates label their statistics and explain offline seats", async
   await page.locator(".players-panel").screenshot({ path: testInfo.outputPath("player-nameplates.png") });
 });
 
+test("admin can review a mid-game restart while activity uses categorized icons and passive waiting text stays hidden", async ({ page }) => {
+  const view = fixture();
+  view.currentPlayerId = view.players[1].id;
+  await story(page, view);
+  await expect(page.locator("#board-prompt")).toBeEmpty();
+  await page.locator(".room-settings summary").click();
+  await expect(page.locator("#restart-game")).toBeVisible();
+  await page.locator("#restart-game").click();
+  await expect(page.locator("#restart-game-dialog")).toBeVisible();
+  await expect(page.locator("#restart-game-confirm")).toBeDisabled();
+  await page.locator("#restart-game-confirmed").check();
+  await expect(page.locator("#restart-game-confirm")).toBeEnabled();
+  await expect(page.locator("#game-log .log-item").first().locator(".ui-icon")).toBeVisible();
+  await expect(page.locator("#game-log .log-item").first().locator(".log-category")).not.toBeEmpty();
+});
+
 for (const [width, count] of [[1920, 3], [1440, 3], [1100, 3], [390, 6], [320, 6]]) {
   test(`tabletop nameplates stay readable for ${count} seats at ${width}px without exposing hands`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width > 1020 ? 1000 : 844 });
@@ -376,6 +392,11 @@ test("even a sole eligible player must be explicitly chosen and names render as 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+function offerView(view, fields) {
+  const responders = fields.targetId === null ? view.players.filter((p) => p.id !== fields.fromId).map((p) => p.id) : [fields.targetId];
+  return { anyGive: 0, anyWant: 0, counterTo: null, responses: {}, responders, blockedBy: [], unavailableReason: null, ...fields };
+}
+
 for (const width of [1440, 390, 320]) test(`earthy trade offer shows exact resource cards and usable actions at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
   const view = fixture();
@@ -383,11 +404,11 @@ for (const width of [1440, 390, 320]) test(`earthy trade offer shows exact resou
   const sender = view.players.find((player) => player.id !== view.viewerId);
   self.name = "amansha";
   sender.name = "Shivam";
-  view.trade = { id: "visual-offer", fromId: sender.id, targetId: self.id,
+  view.trades = [offerView(view, { id: "visual-offer", fromId: sender.id, targetId: self.id,
     give: { wood: 1, brick: 0, sheep: 2, wheat: 0, ore: 0 },
-    want: { wood: 0, brick: 1, sheep: 0, wheat: 0, ore: 0 } };
+    want: { wood: 0, brick: 1, sheep: 0, wheat: 0, ore: 0 } })];
   await story(page, view);
-  const card = page.locator("#trade-offer-card");
+  const card = page.locator(".trade-offer").first();
   await card.scrollIntoViewIfNeeded();
   await expect(card).toHaveAttribute("data-trade-state", "ready");
   await expect(card.locator(".offer-participants")).toContainText("Shivam");
@@ -400,14 +421,14 @@ for (const width of [1440, 390, 320]) test(`earthy trade offer shows exact resou
     Object.fromEntries(nodes.map((node) => [node.dataset.tradeResource, Number(node.dataset.count)])));
   expect(receive).toEqual({ wood: 1, sheep: 2 });
   expect(give).toEqual({ brick: 1 });
-  await expect(card.locator("#accept-trade")).toBeEnabled();
-  await expect(card.locator("#decline-trade")).toBeEnabled();
-  for (const button of ["accept-trade", "decline-trade"]) {
-    expect(await page.locator(`#${button}`).evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  await expect(card.locator('[data-trade-action="accept"]')).toBeEnabled();
+  await expect(card.locator('[data-trade-action="decline"]')).toBeEnabled();
+  for (const action of ["accept", "decline", "counter"]) {
+    expect(await card.locator(`[data-trade-action="${action}"]`).evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
   }
   expect(await card.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect(await page.evaluate(() => state.trade)).toEqual(view.trade);
+  expect(await page.evaluate(() => state.trades)).toEqual(view.trades);
   if (width !== 320) await card.screenshot({ path: testInfo.outputPath(`earthy-trade-offer-${width}.png`) });
 });
 
@@ -416,28 +437,28 @@ test("trade card handles long names, many resources, pending states and stable k
   const view = fixture();
   const sender = view.players.find((player) => player.id !== view.viewerId);
   sender.name = "NorthwindMerchant<&>";
-  view.trade = { id: "long-offer", fromId: sender.id, targetId: view.viewerId,
+  view.trades = [offerView(view, { id: "long-offer", fromId: sender.id, targetId: view.viewerId,
     give: { wood: 19, brick: 19, sheep: 19, wheat: 19, ore: 0 },
-    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 19 } };
+    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 19 } })];
   await story(page, view);
-  const card = page.locator("#trade-offer-card");
+  const card = page.locator(".trade-offer").first();
   await expect(card.locator(".offer-participants")).toContainText(sender.name);
   await expect(card.locator('[data-trade-direction="receive"] [data-trade-resource]')).toHaveCount(4);
-  await expect(card.locator("#accept-trade")).toBeDisabled();
+  await expect(card.locator('[data-trade-action="accept"]')).toBeDisabled();
   await expect(card).toHaveAttribute("data-trade-state", "blocked");
-  await expect(card.locator("#trade-response-status")).toContainText("more ore");
+  await expect(card.locator("[data-trade-status]")).toContainText("more ore");
   expect(await card.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   await card.screenshot({ path: testInfo.outputPath("earthy-trade-offer-multi-resource.png") });
-  await page.locator("#decline-trade").focus();
+  await page.locator('.trade-offer [data-trade-action="decline"]').focus();
   await page.evaluate(() => render());
-  await expect(page.locator("#decline-trade")).toBeFocused();
+  await expect(page.locator('.trade-offer [data-trade-action="decline"]')).toBeFocused();
   await page.evaluate(() => { busy = true; trading.refresh(); });
   await expect(card).toHaveAttribute("data-trade-state", "pending");
-  await expect(card.locator("#accept-trade")).toContainText("Confirming");
-  await expect(card.locator("#decline-trade")).toBeDisabled();
+  await expect(card.locator('[data-trade-action="accept"]')).toContainText("Confirming");
+  await expect(card.locator('[data-trade-action="decline"]')).toBeDisabled();
   await page.evaluate(() => { busy = false; bound = false; trading.refresh(); });
   await expect(card).toHaveAttribute("data-trade-state", "offline");
-  await expect(card.locator("#trade-response-status")).toContainText("Reconnecting");
+  await expect(card.locator("[data-trade-status]")).toContainText("Reconnecting");
 });
 
 for (const role of ["sender", "observer"]) test(`trade card shows unambiguous terms and allowed actions to the ${role}`, async ({ page }) => {
@@ -446,55 +467,56 @@ for (const role of ["sender", "observer"]) test(`trade card shows unambiguous te
   const from = role === "sender" ? view.players.find((player) => player.id === view.viewerId) : others[0];
   const target = role === "sender" ? others[0] : others[1];
   if (role === "observer") view.currentPlayerId = from.id;
-  view.trade = { id: "perspective-offer", fromId: from.id, targetId: target.id,
+  view.trades = [offerView(view, { id: "perspective-offer", fromId: from.id, targetId: target.id,
     give: { wood: 1, brick: 0, sheep: 2, wheat: 0, ore: 0 },
-    want: { wood: 0, brick: 1, sheep: 0, wheat: 0, ore: 0 } };
+    want: { wood: 0, brick: 1, sheep: 0, wheat: 0, ore: 0 } })];
   await story(page, view);
   if (role === "sender") {
     await expect(page.locator('[data-trade-direction="receive"] [data-trade-resource="brick"]')).toHaveAttribute("data-count", "1");
     await expect(page.locator('[data-trade-direction="give"] [data-trade-resource="sheep"]')).toHaveAttribute("data-count", "2");
-    await expect(page.locator("#cancel-trade")).toBeEnabled();
-    await expect(page.locator("#cancel-trade")).toContainText("Withdraw offer");
+    await expect(page.locator('.trade-offer [data-trade-action="withdraw"]')).toBeEnabled();
+    await expect(page.locator('.trade-offer [data-trade-action="withdraw"]')).toContainText("Withdraw offer");
   } else {
     await expect(page.locator('[data-trade-direction="receive"]')).toContainText(`${from.name} gives`);
     await expect(page.locator('[data-trade-direction="give"]')).toContainText(`${target.name} gives`);
-    await expect(page.locator("#trade-response-status")).toHaveText("This offer is between the named players.");
-    await expect(page.locator("#cancel-trade")).toHaveCount(0);
+    await expect(page.locator(".trade-offer [data-trade-status]")).toHaveText("This offer is between the named players.");
+    await expect(page.locator('.trade-offer [data-trade-action="withdraw"]')).toHaveCount(0);
   }
-  await expect(page.locator("#accept-trade")).toHaveCount(0);
-  await expect(page.locator("#decline-trade")).toHaveCount(0);
+  await expect(page.locator('.trade-offer [data-trade-action="accept"]')).toHaveCount(0);
+  await expect(page.locator('.trade-offer [data-trade-action="decline"]')).toHaveCount(0);
 });
 
 test("a restored unfulfillable offer explains why acceptance is blocked without exposing the sender's hand", async ({ page }) => {
   const view = fixture();
   const sender = view.players.find((player) => player.id !== view.viewerId);
-  view.trade = { id: "legacy-offer", fromId: sender.id, targetId: view.viewerId,
+  view.trades = [offerView(view, { id: "legacy-offer", fromId: sender.id, targetId: view.viewerId,
     give: { wood: 1, brick: 0, sheep: 0, wheat: 0, ore: 0 },
-    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } };
-  view.tradeUnavailableReason = "offered-resources-spent";
+    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } })];
+  view.trades[0].unavailableReason = "offered-resources-spent";
   await story(page, view);
-  await expect(page.locator("#accept-trade")).toBeDisabled();
-  await expect(page.locator("#trade-response-status")).toContainText("sender no longer holds the offered cards");
-  await expect(page.locator("#decline-trade")).toBeEnabled();
+  await expect(page.locator('.trade-offer [data-trade-action="accept"]')).toBeDisabled();
+  await expect(page.locator(".trade-offer [data-trade-status]")).toContainText("sender no longer holds the offered cards");
+  await expect(page.locator('.trade-offer [data-trade-action="decline"]')).toBeEnabled();
 });
 
 test("PostgreSQL-style JSON key ordering never replaces unchanged trade response buttons", async ({ page }) => {
   const view = fixture();
   const sender = view.players.find((player) => player.id !== view.viewerId);
-  view.trade = { id: "jsonb-offer", fromId: sender.id, targetId: view.viewerId,
+  view.trades = [offerView(view, { id: "jsonb-offer", fromId: sender.id, targetId: view.viewerId,
     give: { wood: 1, brick: 0, sheep: 0, wheat: 0, ore: 0 },
-    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } };
+    want: { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 1 } })];
   await story(page, view);
-  await page.locator("#accept-trade").focus();
+  await page.locator('.trade-offer [data-trade-action="accept"]').focus();
   const unchanged = await page.evaluate(() => {
-    const original = document.getElementById("accept-trade");
+    const accept = () => document.querySelector('.trade-offer [data-trade-action="accept"]');
+    const original = accept();
     const reverse = (object) => Object.fromEntries(Object.entries(object).reverse());
-    state.trade = reverse({ ...state.trade, give: reverse(state.trade.give), want: reverse(state.trade.want) });
+    state.trades = state.trades.map((trade) => reverse({ ...trade, give: reverse(trade.give), want: reverse(trade.want) }));
     render();
-    return document.getElementById("accept-trade") === original;
+    return accept() === original;
   });
   expect(unchanged).toBe(true);
-  await expect(page.locator("#accept-trade")).toBeFocused();
+  await expect(page.locator('.trade-offer [data-trade-action="accept"]')).toBeFocused();
 });
 
 test("board choices support keyboard preview and Escape without placing a piece", async ({ page }) => {

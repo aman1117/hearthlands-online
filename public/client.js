@@ -63,7 +63,7 @@ const boardPlacement = new BoardPlacement({
 const trading = new TradePanel({
   getState: () => state, isBusy: () => busy, isReady: () => bound,
   submit: (payload) => action(payload), chooseTab: tradeTab,
-  bundleInputs, readBundle, bundleText, escape: escapeHtml, notify,
+  bundleInputs, readBundle, bundleText, escape: escapeHtml, notify, socket,
 });
 const connection = new GameConnection({
   socket,
@@ -101,6 +101,7 @@ const connection = new GameConnection({
     elements["resign-dialog"].close();
     elements["admin-remove-dialog"].close();
     elements["admin-transfer-dialog"].close();
+    elements["restart-game-dialog"].close();
     activity.clear();
     discardDialog.reset();
     publicCards.close();
@@ -239,6 +240,19 @@ elements["admin-transfer-confirm"].onclick = async () => {
   const result = await send("transferAdmin", { playerId: GameControls.read("admin-transfer-choice") });
   if (result) elements["admin-transfer-dialog"].close();
 };
+elements["restart-game"].onclick = () => {
+  if (!legal().canRestartGame || busy || !bound) return;
+  elements["restart-game-confirmed"].checked = false;
+  refreshAdminButtons();
+  elements["restart-game-dialog"].showModal();
+};
+elements["restart-game-confirmed"].onchange = refreshAdminButtons;
+elements["restart-game-cancel"].onclick = () => elements["restart-game-dialog"].close();
+elements["restart-game-confirm"].onclick = async () => {
+  if (!elements["restart-game-confirmed"].checked) return;
+  const result = await send("restartGame");
+  if (result) elements["restart-game-dialog"].close();
+};
 elements["admin-remove-checked"].onchange = refreshAdminButtons;
 elements["admin-remove-cancel"].onclick = () => elements["admin-remove-dialog"].close();
 elements["admin-remove-confirm"].onclick = async () => {
@@ -373,6 +387,7 @@ function applyState(next) {
   if (state.phase === "finished") {
     elements["development-dialog"].close();
     elements["resign-dialog"].close();
+    elements["restart-game-dialog"].close();
   }
   presence.update(state);
   render();
@@ -460,6 +475,8 @@ function refreshAdminButtons() {
   elements["admin-remove-confirm"].disabled = !elements["admin-remove-checked"].checked || !isAdmin() || !bound || busy ||
     !state.players.some((p) => p.id === adminRemoveTarget && p.id !== state.viewerId);
   elements["admin-transfer-confirm"].disabled = !isAdmin() || !bound || busy || !validSuccessor(GameControls.read("admin-transfer-choice"));
+  elements["restart-game-confirm"].disabled = !elements["restart-game-confirmed"].checked ||
+    !legal().canRestartGame || !bound || busy;
 }
 function openRemoval(playerId) {
   if (!isAdmin() || playerId === state.viewerId) return;
@@ -480,6 +497,7 @@ function renderAdmin() {
   elements["resign-game"].classList.toggle("hidden", !(isAdmin() ? legal().canResign : legal().canRequestRemoval) || requested || state.phase === "finished");
   elements["cancel-removal-request"].classList.toggle("hidden", !requested);
   elements["transfer-admin"].classList.toggle("hidden", !isAdmin() || state.players.length < 2);
+  elements["restart-game"].classList.toggle("hidden", !legal().canRestartGame);
   elements["admin-panel"].classList.toggle("hidden", !isAdmin() || !requests.length || state.phase === "finished");
   elements["admin-requests"].innerHTML = isAdmin() ? requests.map((request) => `<article class="admin-request"><p><strong>${escapeHtml(player(request.playerId).name)}</strong> asked to leave.</p><div class="admin-request-actions"><button class="secondary-button" data-approve-removal="${request.playerId}">Review removal</button><button class="text-button" data-decline-removal="${request.playerId}">Decline</button></div></article>`).join("") : "";
   elements["admin-requests"].querySelectorAll("[data-approve-removal]").forEach((button) => { button.onclick = () => openRemoval(button.dataset.approveRemoval); });
@@ -487,6 +505,7 @@ function renderAdmin() {
   if (!isAdmin()) {
     elements["admin-remove-dialog"].close();
     elements["admin-transfer-dialog"].close();
+    elements["restart-game-dialog"].close();
   }
   if (elements["resign-dialog"].open && isAdmin()) {
     elements["successor-field"].innerHTML = `${GameControls.playerPicker("successor-choice", "Select the next admin", adminCandidates(), { selected: "", onChange: refreshAdminButtons })}<p>An offline successor remains admin; admin actions wait until they reconnect.</p>`;
@@ -596,7 +615,7 @@ function list(key) { return legal()[key] || []; }
 
 function render() {
   if (!state) return;
-  const context = `${state.phase}:${state.currentPlayerId}:${state.trade?.id || ""}:${state.freeRoadsRemaining}`;
+  const context = `${state.phase}:${state.currentPlayerId}:${state.freeRoadsRemaining}`;
   const draft = context === draftContext ? [...elements.game.querySelectorAll("input[id]")].filter((node) => node.type !== "checkbox" && !node.closest("#player-trade")).map((node) => [node.id, node.value]) : [];
   draftContext = context;
   if (!mine() || !["action", "roll"].includes(state.phase)) selectedAction = null;
@@ -704,6 +723,19 @@ function renderHand() {
   elements["hand-section"].classList.toggle("hidden", state.phase === "lobby");
   elements["hand-total"].textContent = `${self.resourceCount} cards`;
   elements.resources.innerHTML = RESOURCES.map((resource, i) => GameCards.resource(resource, self.resources[resource], i)).join("");
+  // Like a physical table, tapping a card in your hand adds it to the bank or player trade being drafted.
+  const pickable = !["lobby", "setup", "finished"].includes(state.phase) && (legal().canBankTrade || legal().canOfferTrade);
+  [...elements.resources.children].forEach((card, index) => {
+    const resource = RESOURCES[index];
+    card.dataset.handResource = resource;
+    const usable = pickable && self.resources[resource] > 0;
+    card.classList.toggle("hand-pickable", usable);
+    if (usable) {
+      card.setAttribute("role", "button");
+      card.tabIndex = 0;
+      card.setAttribute("aria-label", `${self.resources[resource]} ${resource} resource cards. Add to your trade.`);
+    }
+  });
   elements["bank-status"].classList.toggle("hidden", state.phase === "lobby");
   elements["bank-status"].innerHTML = state.bank ? `<h2>Island supply</h2><div class="bank-grid">${RESOURCES.map((r) => `<span class="bank-resource" title="${state.bank[r]} ${r} in the bank">${art.icon(r)}<strong>${state.bank[r]}</strong></span>`).join("")}</div>` : "";
   elements["piece-supply"].textContent = `${self.roadsLeft} roads · ${self.settlementsLeft} homes · ${self.citiesLeft} cities`;
@@ -878,14 +910,25 @@ document.addEventListener("input", (event) => {
   if (event.target.id?.startsWith("plenty-")) updateDevelopmentChoice();
 });
 
-function updateBankLabel() {
+function bankCount() {
+  const value = document.querySelector("#bank-count")?.valueAsNumber;
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+function updateBankLabel(normalize = true) {
   const submit = document.querySelector("#bank-submit");
   if (!submit) return;
   const give = GameControls.read("bank-give");
   const receive = GameControls.read("bank-receive");
   const rate = me().tradeRates?.[give] || 4;
-  submit.innerHTML = `<strong>Trade with bank</strong><span>Give ${rate} ${give} &rarr; receive 1 ${receive}</span>`;
-  submit.disabled = !legal().canBankTrade || give === receive || me().resources[give] < rate || !state.bank?.[receive];
+  const held = me().resources[give];
+  const most = give === receive ? 0 : Math.min(Math.floor(held / rate), state.bank?.[receive] || 0);
+  const input = document.querySelector("#bank-count");
+  input.max = String(Math.max(1, most));
+  if (normalize) input.value = String(Math.min(Math.max(1, bankCount() || 1), Math.max(1, most)));
+  const count = bankCount();
+  document.querySelector("#bank-count-limit").textContent = most > 1 ? `up to ${most}` : most === 1 ? "1 available" : "none available";
+  submit.innerHTML = `<strong>Trade with bank</strong><span>Give ${rate * (count || 1)} ${give} &rarr; receive ${count || 1} ${receive}</span>`;
+  submit.disabled = !legal().canBankTrade || give === receive || !count || count > most;
   const help = document.querySelector("#bank-trade-help");
   if (help) {
     const source = rate === 2 ? "Your resource port gives a 2:1 rate." : rate === 3 ? "Your general port gives a 3:1 rate." : "The bank's standard rate is 4:1.";
@@ -894,7 +937,10 @@ function updateBankLabel() {
       : state.phase !== "action" || state.freeRoadsRemaining ? "Finish the current required action before trading."
       : give === receive ? "Choose a different resource to receive."
       : !state.bank?.[receive] ? `The bank has no ${receive} available.`
-      : me().resources[give] < rate ? `${source} You need ${rate - me().resources[give]} more ${give}.` : source;
+      : !count ? "Choose how many cards to receive."
+      : (state.bank?.[receive] || 0) < count ? `The bank has only ${state.bank[receive]} ${receive}.`
+      : held < rate * count ? `${source} You need ${rate * count - held} more ${give}.`
+      : most > 1 ? `${source} You can receive up to ${most} ${receive} in one exchange.` : source;
   }
 }
 
@@ -902,10 +948,19 @@ function renderTrade() {
   const visible = !["lobby", "setup", "finished"].includes(state.phase);
   elements["trade-section"].classList.toggle("hidden", !visible);
   if (!visible) { trading.reset(); return; }
-  elements["bank-trade"].innerHTML = `<div class="trade-destination bank-destination"><strong>Trading with the bank</strong><p>Instant exchange at your best bank / port rate. No player receives these cards.</p></div>${GameControls.resourcePicker("bank-give", "You give to the bank", { counts: me().resources, rates: me().tradeRates, onChange: updateBankLabel })}<div class="trade-divider"><span>BANK EXCHANGE</span></div>${GameControls.resourcePicker("bank-receive", "You receive from the bank", { selected: "brick", counts: state.bank, disabledValues: RESOURCES.filter((r) => !state.bank[r]), onChange: updateBankLabel })}<p id="bank-trade-help" class="trade-feedback" role="status"></p><button id="bank-submit" class="secondary-button exchange-button" aria-describedby="bank-trade-help">Trade with bank</button>`;
-  document.querySelector("#bank-submit").onclick = () => action({
-    type: "bankTrade", giveResource: GameControls.read("bank-give"), receiveResource: GameControls.read("bank-receive"),
-  });
+  elements["bank-trade"].innerHTML = `<div class="trade-destination bank-destination"><strong>Trading with the bank</strong><p>Instant exchange at your best bank / port rate. No player receives these cards.</p></div>${GameControls.resourcePicker("bank-give", "You give to the bank", { counts: me().resources, rates: me().tradeRates, onChange: () => updateBankLabel() })}<div class="trade-divider"><span>BANK EXCHANGE</span></div>${GameControls.resourcePicker("bank-receive", "You receive from the bank", { selected: "brick", counts: state.bank, disabledValues: RESOURCES.filter((r) => !state.bank[r]), onChange: () => updateBankLabel() })}<label class="resource-counter bank-quantity" for="bank-count"><span class="counter-resource">Cards to receive</span><span class="counter-input"><button type="button" data-step="-1" data-input="bank-count" aria-label="Receive one fewer card">−</button><input id="bank-count" type="number" min="1" max="1" step="1" value="1" inputmode="numeric" aria-label="Number of cards to receive from the bank"><button type="button" data-step="1" data-input="bank-count" aria-label="Receive one more card">+</button></span><span id="bank-count-limit" class="counter-limit"></span></label><p id="bank-trade-help" class="trade-feedback" role="status"></p><button id="bank-submit" class="secondary-button exchange-button" aria-describedby="bank-trade-help">Trade with bank</button>`;
+  const count = document.querySelector("#bank-count");
+  count.oninput = () => updateBankLabel(false);
+  count.onchange = () => updateBankLabel();
+  document.querySelector("#bank-submit").onclick = async () => {
+    const give = GameControls.read("bank-give"), receive = GameControls.read("bank-receive");
+    const amount = bankCount(), rate = me().tradeRates?.[give] || 4;
+    if (!amount || document.querySelector("#bank-submit").disabled) return;
+    if (await action({ type: "bankTrade", give: { [give]: rate * amount }, want: { [receive]: amount } })) {
+      const input = document.querySelector("#bank-count");
+      if (input) { input.value = "1"; updateBankLabel(); GameControls.syncCounters(input); }
+    }
+  };
   trading.render();
 }
 
@@ -1011,7 +1066,7 @@ function renderBoard() {
   presence.render();
   elements["board-prompt"].textContent = presence.pingMode ? "Point mode: tap a spot. Turn Point off to build." : state.phase === "lobby" ? "A shared preview. Pick your favourite starting spots." : selected
     ? `Tap the board to preview a ${selected.label}.${state.freeRoadsRemaining ? ` ${state.freeRoadsRemaining} free remaining.` : ""}`
-    : state.winnerId ? "The expedition is complete." : mine() ? "Choose an action from the side panel." : `Waiting for ${player(state.currentPlayerId)?.name}.`;
+    : state.winnerId ? "The expedition is complete." : mine() ? "Choose an action from the side panel." : "";
 }
 
 function renderLog() {
@@ -1020,3 +1075,25 @@ function renderLog() {
 function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
+
+function pickFromHand(resource) {
+  if (!state || !RESOURCES.includes(resource)) return;
+  elements["trade-details"].open = true;
+  const bankActive = !elements["bank-trade"].classList.contains("hidden");
+  if (bankActive && legal().canBankTrade) {
+    GameControls.set("bank-give", resource);
+    updateBankLabel();
+    notify(`Giving ${resource} to the bank. Choose what to receive.`);
+  } else if (legal().canOfferTrade) {
+    tradeTab("player");
+    if (trading.addFromHand(resource)) notify(`Added 1 ${resource} to your offer.`);
+  }
+}
+elements.resources.addEventListener("click", (event) => {
+  const card = event.target.closest(".hand-pickable[data-hand-resource]");
+  if (card) pickFromHand(card.dataset.handResource);
+});
+elements.resources.addEventListener("keydown", (event) => {
+  const card = event.target.closest(".hand-pickable[data-hand-resource]");
+  if (card && ["Enter", " "].includes(event.key)) { event.preventDefault(); pickFromHand(card.dataset.handResource); }
+});

@@ -66,13 +66,13 @@ test("official counteroffers remain available to primary counterparties but not 
   }
   applyAction(room, first.id, { type: "offerTrade", targetId: primary.id, give: { wood: 1 }, want: { ore: 1 } });
   applyAction(room, primary.id, {
-    type: "offerTrade", replaceTradeId: room.trade.id, targetId: first.id, give: { ore: 1 }, want: { wood: 2 },
+    type: "offerTrade", replaceTradeId: room.trades.at(-1).id, targetId: first.id, give: { ore: 1 }, want: { wood: 2 },
   });
-  assert.equal(room.trade.fromId, primary.id);
+  assert.equal(room.trades.at(-1).fromId, primary.id);
   assert.throws(() => applyAction(room, second.id, {
-    type: "offerTrade", replaceTradeId: room.trade.id, targetId: first.id, give: { wheat: 1 }, want: { wood: 1 },
+    type: "offerTrade", replaceTradeId: room.trades.at(-1).id, targetId: first.id, give: { wheat: 1 }, want: { wood: 1 },
   }));
-  applyAction(room, first.id, { type: "respondTrade", tradeId: room.trade.id, accept: true });
+  applyAction(room, first.id, { type: "respondTrade", tradeId: room.trades.at(-1).id, accept: true });
   applyAction(room, primary.id, { type: "endTurn" });
   assert.equal(room.turnRole, "secondary");
   assert.equal(room.turnIndex, 3);

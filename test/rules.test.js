@@ -109,16 +109,19 @@ test("trade counterparties can counteroffer while stale and unrelated replacemen
   give(room, b, { ore: 2 });
   give(room, outsider, { sheep: 1 });
   act(room, { type: "offerTrade", targetId: b.id, give: { wood: 1 }, want: { ore: 1 } }, a);
-  const originalId = room.trade.id;
+  const originalId = room.trades.at(-1).id;
   assert.equal(legal(room, b).canOfferTrade, true);
-  assert.equal(legal(room, outsider).canOfferTrade, false);
+  assert.equal(legal(room, outsider).canOfferTrade, true, "other players may still make their own offer to the active player");
   rejected(room, { type: "offerTrade", targetId: a.id, give: { sheep: 1 }, want: { wood: 1 }, replaceTradeId: originalId }, outsider);
   act(room, { type: "offerTrade", targetId: a.id, give: { ore: 1 }, want: { wood: 2 }, replaceTradeId: originalId }, b);
+  assert.equal(room.trades.at(-1).counterTo, originalId, "a counterparty's replacement is a linked counteroffer");
+  assert.ok(room.trades.some((trade) => trade.id === originalId), "the original offer stays open beside the counteroffer");
   rejected(room, { type: "respondTrade", accept: true, tradeId: originalId }, a);
   rejected(room, { type: "cancelTrade", tradeId: originalId }, b);
-  act(room, { type: "respondTrade", accept: true, tradeId: room.trade.id }, a);
+  act(room, { type: "respondTrade", accept: true, tradeId: room.trades.at(-1).id }, a);
   assert.equal(a.resources.ore, 1);
   assert.equal(b.resources.wood, 2);
+  assert.deepEqual(room.trades, [], "the original closes once its sender can no longer fund it");
   conserved(room);
 });
 
@@ -516,20 +519,23 @@ test("domestic trades may be initiated off-turn only to primary and transfer on 
   assert.equal(legal(room, b).canOfferTrade, true);
   rejected(room, { type: "offerTrade", targetId: c.id, give: { wood: 1 }, want: { wheat: 1 } }, b);
   act(room, { type: "offerTrade", targetId: a.id, give: { wood: 2 }, want: { ore: 1 } }, b);
+  const offerId = room.trades.at(-1).id;
   assert.equal(a.resources.wood, 0);
   assert.equal(b.resources.ore, 0);
-  rejected(room, { type: "offerTrade", targetId: b.id, give: { ore: 1 }, want: { wood: 1 } }, a);
+  act(room, { type: "offerTrade", targetId: b.id, give: { ore: 1 }, want: { wood: 1 } }, a);
+  assert.equal(room.trades.length, 2, "the active player may make a separate offer while another is open");
   rejected(room, { type: "respondTrade", accept: true }, c);
   for (const accept of ["true", "false", 1, 0, null, {}, []]) {
     rejected(room, { type: "respondTrade", accept }, a);
   }
   rejected(room, { type: "respondTrade", accept: true, tradeId: "stale" }, a);
-  act(room, { type: "respondTrade", accept: true, tradeId: room.trade.id }, a);
+  act(room, { type: "respondTrade", accept: true, tradeId: offerId }, a);
   assert.equal(a.resources.wood, 2);
   assert.equal(a.resources.ore, 2);
   assert.equal(b.resources.wood, 1);
   assert.equal(b.resources.ore, 1);
-  assert.equal(room.trade, null);
+  act(room, { type: "cancelTrade" }, a);
+  assert.deepEqual(room.trades, []);
   conserved(room);
 });
 
@@ -557,14 +563,14 @@ test("trade rejects gifts, overlap, unavailable cards, hostile amounts, and unau
   act(room, { type: "respondTrade", accept: false }, b);
   assert.equal(a.resources.wood, 4);
   act(room, offer);
-  const unavailableOfferId = room.trade.id;
+  const unavailableOfferId = room.trades.at(-1).id;
   act(room, { type: "bankTrade", giveResource: "wood", receiveResource: "wheat" }, a);
   rejected(room, { type: "respondTrade", accept: true }, b);
-  assert.equal(room.trade, null, "Spending the offered cards cancels an offer that can no longer be fulfilled");
+  assert.deepEqual(room.trades, [], "Spending the offered cards cancels an offer that can no longer be fulfilled");
   assert.ok(room.log.some((event) => event.type === "tradeCancelled" &&
     event.data.tradeId === unavailableOfferId && event.data.reason === "offered-resources-spent"));
   act(room, { type: "endTurn" });
-  assert.equal(room.trade, null);
+  assert.deepEqual(room.trades, []);
   conserved(room);
 });
 

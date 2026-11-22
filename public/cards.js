@@ -55,8 +55,8 @@ window.GameCards = (() => {
     return `<div class="reference-heading"><span class="eyebrow">KEEP AT HAND</span><h3>Resource conversion</h3><p>What your cards can build, and how to exchange them.</p></div>
       <div class="reference-builds"><h4>Building costs</h4>${buildRows}<p class="reference-note">A city replaces one of your settlements and returns its settlement piece.</p></div>
       <div class="reference-trading"><h4>Bank &amp; port trades</h4><div class="reference-rates">${rates}</div>
-      <p class="reference-note">Use your best available rate. The bank must have the resource you want. Trade only after rolling and resolving any seven; a paired turn has no second roll.</p>
-      <p class="reference-note">Player trades have no fixed ratio: agree on an exchange with the active primary player. No gifts or the same resource on both sides.</p></div>`;
+      <p class="reference-note">Use your best available rate. The bank must have the resource you want. Exchange several full sets at once, e.g. 8 wood at 4:1 for 2 cards. Trade only after rolling and resolving any seven; a paired turn has no second roll.</p>
+      <p class="reference-note">Player trades have no fixed ratio: agree on an exchange with the active primary player, who may offer to everyone and pick among the players who accept. Counteroffers stay beside the original, and tapping cards in your hand adds them to a draft. No gifts or the same resource on both sides.</p></div>`;
   }
   function tradeResources(bundle) {
     return Object.entries(materials).filter(([type]) => bundle[type] > 0).map(([type, material]) =>

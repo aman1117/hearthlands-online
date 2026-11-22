@@ -450,7 +450,7 @@ test("failed actions and harmless negotiations/admin/connectivity changes preser
   assert.equal(opportunity(room).id, id);
   act(room, { type: "offerTrade", targetId: player.id, give: { ore: 1 }, want: { wood: 1 } }, peer);
   assert.equal(opportunity(room).id, id);
-  const offered = structuredClone(room.trade);
+  const offered = structuredClone(room.trades);
   room.hostId = peer.id;
   player.connected = false;
   room.revision += 5;
@@ -462,7 +462,7 @@ test("failed actions and harmless negotiations/admin/connectivity changes preser
   assert.equal(room.hostId, peer.id);
   assert.equal(player.connected, false);
   assert.deepEqual(room.requests, [{ id: "server-receipt", playerId: peer.id }]);
-  assert.deepEqual(room.trade, offered);
+  assert.deepEqual(room.trades, offered);
   assert.ok(room.eventSequence > seq);
   assert.equal(peer.resources.ore, 1);
   assert.equal(player.resources.wood, 3);
@@ -480,8 +480,8 @@ for (const event of ["cancel", "decline", "accept"]) {
     act(room, { type: "buildRoad", edgeId: legal(room).roadEdges[0] });
     const id = opportunity(room).id;
     act(room, { type: "offerTrade", targetId: peer.id, give: { wood: 1 }, want: { ore: 1 } });
-    if (event === "cancel") act(room, { type: "cancelTrade", tradeId: room.trade.id });
-    else act(room, { type: "respondTrade", tradeId: room.trade.id, accept: event === "accept" }, peer);
+    if (event === "cancel") act(room, { type: "cancelTrade", tradeId: room.trades.at(-1).id });
+    else act(room, { type: "respondTrade", tradeId: room.trades.at(-1).id, accept: event === "accept" }, peer);
     if (event === "accept") {
       assert.equal(opportunity(room), null);
       rejected(room, { type: "undoPlacement", placementId: id });
@@ -489,11 +489,29 @@ for (const event of ["cancel", "decline", "accept"]) {
     } else {
       assert.equal(opportunity(room).id, id);
       undo(room);
-      assert.equal(room.trade, null);
+      assert.deepEqual(room.trades, []);
     }
     conserved(room);
   });
 }
+
+test("open-offer responses preserve placement undo until the offerer completes an exchange", () => {
+  const room = fixture();
+  const player = actor(room);
+  const peer = room.players[1];
+  seedStructure(room);
+  give(room, player, { wood: 3, brick: 1 });
+  give(room, peer, { ore: 1 });
+  act(room, { type: "buildRoad", edgeId: legal(room).roadEdges[0] });
+  const id = opportunity(room).id;
+  act(room, { type: "offerTrade", targetId: null, give: { wood: 1 }, want: { ore: 1 } });
+  act(room, { type: "respondTrade", tradeId: room.trades.at(-1).id, accept: true }, peer);
+  assert.equal(opportunity(room).id, id);
+  act(room, { type: "confirmTrade", tradeId: room.trades.at(-1).id, partnerId: peer.id });
+  assert.equal(opportunity(room), null);
+  assert.equal(peer.resources.wood, 1);
+  conserved(room);
+});
 
 for (const barrier of ["buyDevelopment", "bankTrade", "playDevelopment", "endTurn", "resign"]) {
   test(`successful ${barrier} is an irreversible placement-undo barrier`, () => {
@@ -741,7 +759,7 @@ test("peer trade acceptance is serialized against undo without losing either par
   await call(client, "gameAction", build);
   const placementId = client.latest.undoPlacement.id;
   await call(client, "gameAction", packet(client, { type: "offerTrade", targetId: peer.id, give: { wood: 1 }, want: { ore: 1 } }));
-  const trade = (await h.read()).trade;
+  const trade = (await h.read()).trades.at(-1);
   const accept = call(other, "gameAction", packet(other, { type: "respondTrade", tradeId: trade.id, accept: true }));
   const reverse = call(client, "gameAction", packet(client, { type: "undoPlacement", placementId }));
   assert.equal((await accept).ok, true);

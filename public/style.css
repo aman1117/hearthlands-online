@@ -293,10 +293,14 @@ details summary { cursor: pointer; font: bold 16px var(--display); color: #50635
 .trade-response .action-button { min-height: 33px; }
 .chronicle { background: #f1eee3; }
 .chronicle .section-heading h2 { font-size: 15px; }
-#game-log { max-height: 180px; overflow: auto; scrollbar-width: thin; }
-.log-item { display: flex; align-items: baseline; gap: 8px; font-size: 10px; line-height: 1.6; color: #7e8779; padding: 4px 0; }
-.log-item::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: #b5a26f; flex-shrink: 0; }
-.log-item:first-child { color: #41635e; font-weight: 700; }
+#game-log { display: grid; gap: 7px; max-height: 230px; overflow: auto; scrollbar-width: thin; }
+.log-item { display: grid; grid-template-columns: 25px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 8px; border: 1px solid #ded8c5; border-radius: 7px; color: #737d70; background: #fbf8ef; box-shadow: 0 1px 2px #34463b0a; }
+.log-item .ui-icon { width: 22px; height: 22px; padding: 4px; border-radius: 6px; color: #6a8074; background: #e5eadf; }
+.log-item div { min-width: 0; }
+.log-item p { margin: 2px 0 0; font-size: 10px; line-height: 1.45; }
+.log-category, .activity-category { font: 700 8px var(--display); letter-spacing: .075em; text-transform: uppercase; color: #9b7c48; }
+.log-item time { padding-top: 2px; color: #a09b86; font-size: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.log-item:first-child { border-color: #b8c9b9; color: #385b53; background: #f4f8ef; }
 #winner-panel { background: linear-gradient(150deg, #224b52, #153c49); color: #fff3ce; padding: 26px 22px; }
 #winner-panel .eyebrow { color: #d7b579; }
 #winner-panel h2 { font-size: 28px; }

@@ -83,7 +83,7 @@ Turn handoffs, completed games, dice/results, development-card actions, complete
 | Card timing | One non-VP card per activation; no same-activation purchase/play; playable before rolling or during actions |
 | Bonuses | Longest Road with forks/cycles/opponent interruptions and tie retention; Largest Army with strict takeover |
 | Victory | Ten points on the player's own activation, including hidden/newly bought VP cards; automatic win and revealed final scores |
-| After victory | The host can return everyone to the lobby for a rematch |
+| New game | The admin can end a game in progress, or return everyone to the lobby after victory; seats and private resume keys are preserved |
 
 ### Development-card inventory
 
@@ -102,13 +102,28 @@ Played-card counts are stored with the game and survive reconnects/restarts. Exi
 
 Player trading always involves the active primary player. Other players may propose trades to that player or respond/counteroffer, but may not trade independently with each other. The paired secondary player may trade with the bank/ports only.
 
+### Player trading (Colonist-style table)
+
+The trading post mirrors how Colonist runs trades (checked against Colonist's v331 release, November 2026), and goes further in a few places:
+
+- **Several offers at once.** The active player can keep up to **5** offers open; other players up to **3**. Offers appear as a compact stack with **↓ You receive / ↑ You give** rows. The same exact offer cannot be open twice and can be re-sent at most 3 times per turn (2 for other players), which prevents spam.
+- **Offer to all players** or to one named player. Every eligible player answers **Accept** or **Decline**, and a live **Table responses** list shows each player as Thinking, Accepted, Declined, Countering… or Blocked. On an open offer, accepting only signals interest and requires holding the requested cards. No cards move until the offerer presses **Trade with [name]**. On a named offer, Accept completes the exchange immediately.
+- **Counteroffers sit beside the original.** **Counteroffer** prefills the composer with the sides swapped. The counteroffer goes to the offer's sender, appears under the original as "Counter to [name]'s offer", and the original stays open. Other players can press **Me too: offer the same** to copy someone's counteroffer, so the active player can pick who to trade with. While someone drafts a counteroffer, everyone sees "[name] is preparing a counteroffer…".
+- **Edit offer** replaces your own offer with new terms. Old answers are cleared, and a delayed click can never accept the new terms. **Withdraw offer** closes it.
+- **Open-ended "Any" cards.** For example "1 wood for any 1 card" or "any 2 cards for 1 sheep". Like Colonist, these cannot be accepted directly: players answer with **Choose cards & counter**, naming the exact cards.
+- **Auto-decline.** An unanswered open offer auto-declines on your screen after 20 seconds, with a visible countdown. Press **Keep thinking** to stop it, or turn it off in **Trade settings & blocks**. Countering an offer also stops it. Unlike Colonist, this never reveals what is in your hand: a shortage is shown only to you. An open offer closes automatically once every eligible player has declined or blocked it.
+- **Blocking trades (embargo).** **Trade settings & blocks → Block [name]** stops that player's offers reaching you. You can still offer to them. Blocks are one-directional and public; blocked players show as **Blocked**. You can unblock from the same list or from their offer card.
+- **Tap cards in your hand** to add them to the offer you are drafting, or to pick what you give the bank.
+- **Trade with bank instead** appears in the player composer whenever your draft is a valid bank trade at your port rates. That includes mixed bundles such as 3 wood at 3:1 + 2 sheep at 2:1 → 2 cards.
+- Bank / port trades can also exchange several full sets in one action from the Bank tab, using **Cards to receive** (e.g. 8 wood at 4:1 → 2 ore). The legacy single-set request remains supported.
+- Offers from older saves, which allowed only one pending offer, load and work unchanged.
 ### Trading timing and reliable offers
 
-The trading post separates **Bank / ports - Instant exchange** from **With a player - Send an offer**, with a visible **Selected** label and destination banner. **Trade with bank** exchanges only with the bank at your best rate; no player receives those cards. New player offers start with **no recipient selected**. Choose a named player first, then review **You give to [name]**, **You receive from [name]**, and **Send offer to [name]**. Counteroffers keep the actual other party selected, and acceptance names the sender. Changing tabs never submits a trade.
+The trading post separates **Bank / ports - Instant exchange** from **With a player - Send an offer**, with a visible **Selected** label and destination banner. **Trade with bank** exchanges only with the bank at your best rate; no player receives those cards. New player offers start with **no recipient selected**. Choose a named player first (or **Offer to all players**), then review **You give to [name]**, **You receive from [name]**, and **Send offer to [name]**. Counteroffers are always addressed to the offer's sender, and acceptance names the sender. Changing tabs never submits a trade.
 
 **No player or bank/port trading before the production roll.** First roll, collect resources, and fully resolve any seven (discards, robber, theft); then trade during the Action phase. An eligible older development card may be played before rolling, but that does not unlock trading. The interface explains the current restriction and the server rejects out-of-phase requests.
 
-Trade responses are bound to the exact offer ID and terms, never whichever offer happens to be displayed later. Routine state/presence updates preserve the Accept button and draft inputs instead of replacing them mid-click. A replacement offer gets new response controls, so pressing an old button cannot accept new terms. Counteroffers default to the actual other party.
+Trade responses are bound to the exact offer ID and terms, never whichever offer happens to be displayed later. Routine state/presence updates preserve the Accept button and draft inputs instead of replacing them mid-click. An edited offer gets a new ID and new response controls, so pressing an old button cannot accept new terms.
 
 Offers appear as parchment-style tabletop cards with player-colour markers, illustrated resource quantities, and separate **You receive** / **You give** sections. The sender sees the reciprocal exchange; uninvolved players see named parties instead of misleading personal instructions. Accept is the primary action, while decline/withdraw and pending, offline or shortage states remain clearly distinguished.
 
