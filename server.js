@@ -7,7 +7,7 @@ const express = require("express");
 const { Server } = require("socket.io");
 const {
   activePlayers, addPlayer, appendPublicEvent, applyAction, createRoom, ensureMapPreview,
-  normalizePublicEvents, publicState, resignPlayer, shuffleMap, startGame, tradeList,
+  normalizePublicEvents, publicState, resignPlayer, shuffleMap, startGame, tradeList, setTurnTimer, expireTurnTimer,
 } = require("./game");
 const { createStorage, StorageError } = require("./storage");
 const { migratePublicDevelopmentHistory } = require("./development-history");
@@ -67,6 +67,13 @@ function createGameServer(options = {}) {
   const queues = new Map();
   let shuttingDown = false;
   let initialized = false;
+  // Turn timers: a grace period after restarts or an empty table reconnecting, so nobody is timed out unseen.
+  const timerGraceMs = options.timerGraceMs ?? 20_000;
+  const timerSweepMs = options.timerSweepMs ?? 1000;
+  let startedAt = 0;
+  const resumedAt = new Map();
+  const firingTimers = new Set();
+  const failedTimers = new Map();
   server.on("connection", (connection) => {
     connections.add(connection);
     connection.once("close", () => connections.delete(connection));
@@ -188,6 +195,33 @@ function createGameServer(options = {}) {
     };
   }
 
+  function timerDeadline(room) {
+    return Math.max(room.timer.deadline, startedAt + timerGraceMs, (resumedAt.get(room.code) ?? 0) + timerGraceMs);
+  }
+
+  async function sweepTimers() {
+    if (!initialized || shuttingDown) return;
+    for (const room of rooms.values()) {
+      const code = room.code;
+      if (!room.timer || room.archivedAt !== undefined || uncertainRooms.has(code) || firingTimers.has(code)) continue;
+      if (timerDeadline(room) > now() || (failedTimers.get(code) ?? 0) > now()) continue;
+      // An empty table is paused; nobody should return to a game that auto-played without them.
+      if (!activePlayers(room).some((player) => recipientFor(room, player))) continue;
+      firingTimers.add(code);
+      enqueue(`room:${code}`, async () => {
+        const original = await freshRoom(code);
+        if (!original?.timer || original.archivedAt !== undefined || timerDeadline(original) > now()) return;
+        const room = structuredClone(original);
+        if (!expireTurnTimer(room, now(), random)) return;
+        failedTimers.delete(code);
+        publish(await commit(room));
+      }).catch((error) => {
+        failedTimers.set(code, now() + 30_000);
+        console.error(`Unable to apply an expired turn timer for room ${code}: ${error.message}`);
+      }).finally(() => firingTimers.delete(code));
+    }
+  }
+
   function publish(room) {
     const visibleRoom = {
       ...room, players: room.players.map((player) => ({ ...player, connected: Boolean(recipientFor(room, player)) })),
@@ -202,8 +236,10 @@ function createGameServer(options = {}) {
         canTransferAdmin: administrator && activePlayers(room).length > 1,
         canRemovePlayer: administrator && room.phase !== "finished" && activePlayers(room).length > 1,
       };
+      // Deadlines are sent with the server clock so every browser counts down the same remaining time.
+      if (view.turnTimer?.timer) view.turnTimer.timer.deadline = timerDeadline(room);
       recipientFor(room, player)?.emit("state", {
-        ...view, ...protocolState(room, player.id),
+        ...view, ...protocolState(room, player.id), serverTime: now(),
       });
     }
   }
@@ -310,6 +346,7 @@ function createGameServer(options = {}) {
   function bind(socket, room, player) {
     if (player.resigned) throw retiredError(room, player);
     const previousId = sockets.get(player.reconnectToken);
+    if (!activePlayers(room).some((candidate) => recipientFor(room, candidate))) resumedAt.set(room.code, now());
     // Transfer ownership before disconnect: an old tab must not disconnect the new one.
     if (socket.connected) sockets.set(player.reconnectToken, socket.id);
     socket.data.token = player.reconnectToken;
@@ -466,7 +503,7 @@ function createGameServer(options = {}) {
     const { requestId, clientSeq } = payload;
     const sequenced = clientSeq !== undefined;
     validateRequestId(requestId, sequenced || [
-      "gameAction", "shuffleMap", "resignGame", "requestRemoval", "cancelRemovalRequest", "declineRemoval", "transferAdmin",
+      "gameAction", "shuffleMap", "resignGame", "requestRemoval", "cancelRemovalRequest", "declineRemoval", "transferAdmin", "setTurnTimer",
     ].includes(event));
     if (sequenced && (!Number.isSafeInteger(clientSeq) || clientSeq <= 0)) {
       throw new RequestError("REJECTED", "clientSeq must be a positive safe integer.");
@@ -591,7 +628,7 @@ function createGameServer(options = {}) {
           data: { playerId: target.id, reason },
         }, now());
       }
-      resignPlayer(room, target.id, random);
+      resignPlayer(room, target.id, random, now());
       Object.assign(room.players.find((player) => player.id === target.id), {
         resignedAt: now(), retirementRequestId: payload.requestId,
       });
@@ -653,6 +690,7 @@ function createGameServer(options = {}) {
     room.createdAt = original.createdAt;
     room.revision = original.revision;
     room.mapVersion = original.mapVersion ?? 0;
+    room.turnTimer = original.turnTimer ?? { preset: "off" };
     ensureMapPreview(room, random);
     appendPublicEvent(room, event, now());
     return room;
@@ -823,7 +861,7 @@ function createGameServer(options = {}) {
       if (activePlayers(room).some((candidate) => !recipientFor(room, candidate))) {
         throw new Error("Wait for all seated players to reconnect, or remove absent players in the lobby.");
       }
-      startGame(room, actorId, random);
+      startGame(room, actorId, random, now());
     }));
 
     handle("shuffleMap", (payload) => mutation(socket, "shuffleMap", payload, (room, actorId) => {
@@ -839,7 +877,12 @@ function createGameServer(options = {}) {
           !tradeList(room).some((trade) => trade.id === action.tradeId)) {
         throw new Error("This trade offer has changed. Review the new offer.");
       }
-      applyAction(room, actorId, action, random);
+      applyAction(room, actorId, action, random, now());
+    }));
+
+    handle("setTurnTimer", (payload) => mutation(socket, "setTurnTimer", payload, (room, actorId) => {
+      requireAdmin(room, actorId);
+      setTurnTimer(room, actorId, payload.settings, now());
     }));
 
     handle("removePlayer", (payload) => mutation(socket, "removePlayer", payload,
@@ -952,15 +995,20 @@ function createGameServer(options = {}) {
     enqueue("expiry", expireRooms).catch(() => console.error("Unable to archive expired game rooms."));
   }, 60_000);
   cleanup.unref();
+  const timerSweep = setInterval(() => {
+    sweepTimers().catch(() => console.error("Unable to check turn timers."));
+  }, timerSweepMs);
+  timerSweep.unref();
   let closePromise;
   return {
-    app, server, io, storage,
+    app, server, io, storage, sweepTimers,
     async listen(port = 0, host = "127.0.0.1") {
       try {
         await storage.init();
         await refreshRooms();
         await expireRooms();
         for (const room of await migratePublicDevelopmentHistory(storage)) rooms.set(room.code, room);
+        startedAt = now();
         initialized = true;
         await new Promise((resolve, reject) => {
           server.once("error", reject);
@@ -975,6 +1023,7 @@ function createGameServer(options = {}) {
     },
     async close() {
       clearInterval(cleanup);
+      clearInterval(timerSweep);
       closePromise ||= (async () => {
         shuttingDown = true;
         await new Promise((resolve) => {

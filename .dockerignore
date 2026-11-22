@@ -8,6 +8,7 @@
 !development-history.js
 !placement-undo.js
 !resource-layout.js
+!turn-timer.js
 !storage
 !storage/**
 !public

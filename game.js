@@ -6,6 +6,9 @@ const { spreadResources } = require("./resource-layout");
 const {
   capturePlacement, recordPlacement, invalidatePlacementUndo, preserveAfterAction, undoOpportunity, undoLatestPlacement,
 } = require("./placement-undo");
+const {
+  TIMER_PRESETS, normalizeTimerSettings, timerSettings, timerStage, stageSignature, syncTimer, adjustTimerAfterAction, publicTurnTimer,
+} = require("./turn-timer");
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 const COLORS = ["#de5b43", "#2d82c7", "#f2b84b", "#6d9f4f", "#8357a5", "#20a398"];
@@ -209,6 +212,8 @@ const PUBLIC_EVENT_FIELDS = {
   gameFinished: ["winnerId", "reason", "points"],
   playerResigned: ["resourceCount", "developmentCount", "roadCount", "settlementCount", "cityCount"],
   placementUndone: ["placementType", "targetId", "count"],
+  turnTimedOut: ["kind", "playerIds"],
+  turnTimerChanged: ["preset", "durations"],
   legacy: [],
 };
 const isRecord = (value) => value !== null && typeof value === "object" &&
@@ -418,7 +423,7 @@ function createRoom(hostName) {
     robberReturnPhase: null, freeRoadsRemaining: 0, freeRoadsReturnPhase: null,
     developmentPlayed: false, developmentDeck: [], bank: emptyResources(),
     longestRoadHolderId: null, largestArmyHolderId: null,
-    trades: [], embargoes: {}, winnerId: null, winReason: null, log: [], eventSequence: 0, eventOutbox: [], createdAt: Date.now(),
+    trades: [], embargoes: {}, turnTimer: { preset: "off" }, timer: null, winnerId: null, winReason: null, log: [], eventSequence: 0, eventOutbox: [], createdAt: Date.now(),
   };
   const player = addPlayer(room, hostName);
   room.hostId = player.id;
@@ -451,7 +456,7 @@ function addPlayer(room, name, reconnectToken = crypto.randomBytes(32).toString(
   return player;
 }
 
-function startGame(room, actorId, random = Math.random) {
+function startGame(room, actorId, random = Math.random, now = Date.now()) {
   if (room.hostId !== actorId) throw new Error("Only the host can start.");
   if (room.phase !== "lobby") throw new Error("The game has already started.");
   if (room.players.length < 3 || room.players.length > 6) {
@@ -481,6 +486,7 @@ function startGame(room, actorId, random = Math.random) {
     type: "gameStarted", actorId,
     data: { playerCount: players.length, boardPlayerCount: expanded ? 6 : 4, firstPlayerId: currentPlayer(room).id },
   });
+  syncTimer(room, now);
 }
 
 function getVertex(room, vertexId) {
@@ -1333,17 +1339,89 @@ function commitState(target, source) {
   }
   if (Array.isArray(target)) target.length = source.length;
 }
-function applyAction(room, actorId, action, random = Math.random) {
+function applyAction(room, actorId, action, random = Math.random, now = Date.now()) {
   const next = structuredClone(room);
+  const signatureBefore = stageSignature(room);
   const placement = capturePlacement(next, actorId, action);
   const result = executeAction(next, actorId, action, random);
   if (placement) recordPlacement(next, placement);
   else if (!preserveAfterAction(action, tradeList(room).find((trade) => trade.id === action.tradeId) || null)) invalidatePlacementUndo(next);
+  adjustTimerAfterAction(next, action, signatureBefore, now);
+  syncTimer(next, now);
   commitState(room, next);
   return result;
 }
 
-function resignPlayer(room, actorId, random = Math.random) {
+const PRESET_LABELS = { off: "off", "30": "30s (very fast)", "60": "60s (fast)", "120": "120s (normal)", "240": "240s (slow)", custom: "custom times" };
+// Admin-only room setting. Changing it mid-game restarts the current countdown with the new times.
+function setTurnTimer(room, actorId, input, now = Date.now()) {
+  if (room.hostId !== actorId) throw new Error("Only the administrator can change the turn timer.");
+  if (room.phase === "finished" || room.winnerId) throw new Error("The game is over.");
+  const settings = normalizeTimerSettings(input);
+  if (JSON.stringify(settings) === JSON.stringify(timerSettings(room))) throw new Error("That turn timer is already selected.");
+  room.turnTimer = settings;
+  room.timer = null;
+  syncTimer(room, now);
+  const durations = settings.preset === "custom" ? settings.durations : TIMER_PRESETS[settings.preset];
+  appendLog(room, settings.preset === "off" ? "The administrator turned the turn timer off."
+    : `The administrator set the turn timer to ${PRESET_LABELS[settings.preset]}: ${durations.turn}s per turn, ${durations.roll}s to roll, ${durations.robber}s for the robber.`, {
+    type: "turnTimerChanged", actorId, data: { preset: settings.preset, durations },
+  });
+}
+
+const TIMEOUT_MESSAGES = {
+  setupSettlement: "a starting settlement was placed for them", setupRoad: "a starting road was placed for them",
+  roll: "the dice were rolled automatically", freeRoads: "their unused free roads were forfeited",
+  discard: "cards were discarded at random", robber: "the robber was moved automatically",
+  steal: "a player to rob was chosen at random", action: "their turn ended",
+};
+function randomDiscard(player, count, random) {
+  const cards = shuffle(RESOURCES.flatMap((resource) => Array(player.resources[resource]).fill(resource)), random).slice(0, count);
+  return Object.fromEntries(RESOURCES.map((resource) => [resource, cards.filter((card) => card === resource).length]));
+}
+// When a countdown runs out the game makes the pending move (random where a choice is needed), as Colonist does.
+function expireTurnTimer(room, now = Date.now(), random = Math.random) {
+  const stage = timerStage(room);
+  const timer = room.timer;
+  if (!stage || !timer || timer.deadline > now || timer.signature !== stageSignature(room, stage)) return false;
+  const next = structuredClone(room);
+  const current = currentPlayer(next);
+  const ids = stage.kind === "discard" ? Object.keys(next.pendingDiscards) : [current.id];
+  const names = ids.map((playerId) => next.players.find((player) => player.id === playerId)?.name).filter(Boolean);
+  appendLog(next, `${names.join(" and ")} ran out of time; ${TIMEOUT_MESSAGES[stage.kind]}.`, {
+    type: "turnTimedOut", actorId: null, data: { kind: stage.kind, playerIds: ids },
+  });
+  const run = (actorId, action) => applyAction(next, actorId, action, random, now);
+  const pick = (choices) => {
+    if (!choices.length) throw new Error("No legal automatic move is available.");
+    return choices[randomIndex(random, choices.length)];
+  };
+  const legal = () => legalActions(next, current.id);
+  switch (stage.kind) {
+    case "setupSettlement": run(current.id, { type: "setupSettlement", vertexId: pick(legal().settlementVertices) }); break;
+    case "setupRoad": run(current.id, { type: "setupRoad", edgeId: pick(legal().roadEdges) }); break;
+    case "roll": run(current.id, { type: "roll" }); break;
+    case "freeRoads": run(current.id, { type: "finishFreeRoads" }); break;
+    case "discard":
+      for (const playerId of ids) {
+        const player = next.players.find((candidate) => candidate.id === playerId);
+        run(playerId, { type: "discard", resources: randomDiscard(player, next.pendingDiscards[playerId], random) });
+      }
+      break;
+    case "robber": run(current.id, { type: "moveRobber", tileId: pick(legal().robberTiles) }); break;
+    case "steal": run(current.id, { type: "steal", targetId: pick(next.robberVictims) }); break;
+    case "action":
+      if (next.freeRoadsRemaining) run(current.id, { type: "finishFreeRoads" });
+      run(current.id, { type: "endTurn" });
+      break;
+  }
+  invalidatePlacementUndo(next);
+  syncTimer(next, now);
+  commitState(room, next);
+  return true;
+}
+
+function resignPlayer(room, actorId, random = Math.random, now = Date.now()) {
   if (!RESIGN_PHASES.includes(room.phase) || room.winnerId || !room.board) {
     throw new Error("You can only resign from an unfinished match.");
   }
@@ -1443,6 +1521,7 @@ function resignPlayer(room, actorId, random = Math.random) {
     finishRobber(next);
   }
   checkWinner(next);
+  syncTimer(next, now);
   commitState(room, next);
 }
 
@@ -1562,6 +1641,7 @@ function publicState(room, viewerId) {
       unavailableReason: tradeUnavailableReason(room, trade),
     })),
     embargoes: isRecord(room.embargoes) ? room.embargoes : {}, tradeLimits: TRADE_LIMITS,
+    turnTimer: publicTurnTimer(room),
     winnerId: room.winnerId, log: events.log, viewerId,
     legal: legalActions(room, viewerId),
   };
@@ -1571,4 +1651,5 @@ function publicState(room, viewerId) {
 module.exports = {
   RESOURCES, COSTS, activePlayers, addPlayer, appendPublicEvent, applyAction, createRoom, ensureMapPreview, makeBoard,
   normalizePublicEvents, publicState, resignPlayer, resourceTotal, shuffleMap, startGame, TRADE_LIMITS, tradeList,
+  setTurnTimer, expireTurnTimer,
 };

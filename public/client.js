@@ -65,6 +65,10 @@ const trading = new TradePanel({
   submit: (payload) => action(payload), chooseTab: tradeTab,
   bundleInputs, readBundle, bundleText, escape: escapeHtml, notify, socket,
 });
+const turnClock = new TurnClock({
+  element: elements["turn-clock"], getState: () => state, escape: escapeHtml, isBusy: () => busy, isReady: () => bound,
+  submit: async (settings) => Boolean(await send("setTurnTimer", { settings })), onLowTime: () => tone("ping"),
+});
 const connection = new GameConnection({
   socket,
   onState: applyState,
@@ -389,6 +393,7 @@ function applyState(next) {
     elements["resign-dialog"].close();
     elements["restart-game-dialog"].close();
   }
+  turnClock.sync(state);
   presence.update(state);
   render();
   activity.update(state);
@@ -462,6 +467,12 @@ function renderResignSummary() {
   if (!state) return;
   const self = me();
   elements["resign-summary"].innerHTML = `<span><strong>${self.resourceCount}</strong> resources</span><span><strong>${self.developmentCount}</strong> unplayed cards</span><span><strong>${15 - self.roadsLeft}</strong> roads</span><span><strong>${5 - self.settlementsLeft}</strong> settlements</span><span><strong>${4 - self.citiesLeft}</strong> cities</span>`;
+}
+function renderTimers() {
+  const playing = !["lobby", "finished"].includes(state.phase);
+  elements["game-timer"].classList.toggle("hidden", !playing);
+  if (state.phase === "lobby") turnClock.renderSettings(elements["lobby-timer"], { admin: isAdmin() });
+  if (playing) turnClock.renderSettings(elements["game-timer"], { admin: isAdmin() });
 }
 function isAdmin() { return Boolean(state && state.hostId === state.viewerId); }
 function adminCandidates() {
@@ -623,6 +634,7 @@ function render() {
   elements["copy-code"].textContent = state.code;
   renderPlayers();
   renderAdmin();
+  renderTimers();
   renderBanner();
   renderLobby();
   renderHand();

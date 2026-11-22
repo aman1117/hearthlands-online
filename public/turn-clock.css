@@ -1,0 +1,43 @@
+.turn-status { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 0; }
+.turn-status .turn-banner { min-width: 0; }
+.turn-clock { flex: 0 0 auto; display: inline-grid; grid-template-columns: auto auto auto; align-items: center; gap: 2px 8px; min-width: 150px; padding: 5px 11px 7px; border: 1px solid #c5bc9e; border-radius: 6px; background: #faf4e6; color: #4e5a3f; font: 600 12px/1.2 var(--body); position: relative; }
+.turn-clock-who { font-weight: 700; color: #3e4c37; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-clock-stage { color: #746443; font-weight: 500; }
+.turn-clock-time { font: 700 16px/1 var(--display); font-variant-numeric: tabular-nums; color: #3e4c37; text-align: right; min-width: 42px; }
+.turn-clock-bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: #e3d6b4; overflow: hidden; }
+.turn-clock-bar i { display: block; height: 100%; background: #376c68; transition: width .25s linear; }
+.turn-clock.mine { border-color: #376c68; background: #e5efe6; box-shadow: inset 0 -2px #376c68; }
+.turn-clock.low .turn-clock-time { color: #a95032; }
+.turn-clock.low .turn-clock-bar i { background: #a95032; }
+.turn-clock.mine.low { border-color: #a95032; background: #f6e2d8; box-shadow: inset 0 -2px #a95032; animation: clock-pulse 1s ease-in-out infinite; }
+@keyframes clock-pulse { 50% { box-shadow: inset 0 -2px #a95032, 0 0 0 3px #a9503233; } }
+.timer-settings { margin: 12px 0; }
+.timer-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 8px; padding: 0; border: 0; }
+.timer-presets legend { margin-bottom: 6px; color: #3d5749; font-size: 13px; font-weight: 700; }
+.timer-preset { display: grid; gap: 2px; min-height: 48px; padding: 6px 4px; border: 2px solid #c5bc9e; border-radius: 5px; background: #faf4e6; color: #62583f; text-align: center; }
+.timer-preset strong { font-size: 13px; }
+.timer-preset small { font-size: 9.5px; font-weight: 500; line-height: 1.2; }
+.timer-preset[aria-checked="true"] { border-color: #376c68; background: #dcece5; color: #27534f; box-shadow: inset 0 -3px #376c68; }
+.timer-preset:focus-visible, .timer-apply:focus-visible, .timer-input input:focus-visible { outline: 3px solid #375f60; outline-offset: 2px; }
+.timer-custom { display: grid; gap: 5px; margin: 0 0 8px; }
+.timer-custom label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #5d5440; }
+.timer-input { display: inline-flex; align-items: center; gap: 4px; }
+.timer-input input { width: 72px; min-height: 34px; padding: 4px 6px; border: 1px solid #c5bc9e; border-radius: 4px; text-align: right; font: 600 13px var(--body); }
+.timer-note { margin: 6px 0; line-height: 1.45; }
+.timer-error { margin: 0; color: #8d482e; font-size: 12px; min-height: 0; }
+.timer-error:empty { display: none; }
+.timer-apply { width: 100%; min-height: 42px; white-space: normal; }
+.timer-summary { margin: 0; font-size: 12px; color: #4e5a3f; line-height: 1.45; }
+.room-timer { padding-top: 8px; border-top: 1px dashed #c5bc9e; }
+@media (max-width: 1020px) {
+  .turn-clock { min-width: 0; grid-template-columns: auto auto; padding: 4px 9px 6px; }
+  .turn-clock-stage { display: none; }
+}
+@media (max-width: 760px) {
+  .turn-status { grid-row: 2; grid-column: 1 / -1; flex-direction: column; align-items: stretch; gap: 4px; }
+  .turn-clock { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-clock.mine.low { animation: none; }
+  .turn-clock-bar i { transition: none; }
+}

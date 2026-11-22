@@ -117,6 +117,24 @@ The trading post mirrors how Colonist runs trades (checked against Colonist's v3
 - **Trade with bank instead** appears in the player composer whenever your draft is a valid bank trade at your port rates. That includes mixed bundles such as 3 wood at 3:1 + 2 sheep at 2:1 → 2 cards.
 - Bank / port trades can also exchange several full sets in one action from the Bank tab, using **Cards to receive** (e.g. 8 wood at 4:1 → 2 ore). The legacy single-set request remains supported.
 - Offers from older saves, which allowed only one pending offer, load and work unchanged.
+### Turn timers (Colonist-style, configurable)
+
+Turn timers are **off by default**, so existing and new games behave as before. The room administrator can choose a timer in the lobby, or mid-game from **Room & session**. Changing it mid-game restarts the current countdown. Presets use Colonist's published per-move times:
+
+| Preset | Turn (build & trade) | Roll | Robber / rob | Discard | Starting settlement / road | Bonus per build/trade |
+| --- | --- | --- | --- | --- | --- | --- |
+| 30s (very fast) | 30s | 10s | 10s | 15s | 60s / 15s | +5s |
+| 60s (fast, Colonist default) | 60s | 10s | 20s | 20s | 120s / 30s | +10s |
+| 120s (normal) | 120s | 20s | 40s | 40s | 180s / 45s | +20s |
+| 240s (slow) | 240s | 60s | 80s | 80s | 360s / 90s | +60s |
+
+**Custom** sets each move separately, in whole seconds (bonus 0-300s, other moves up to 3600s). Unlike Colonist, which offers only fixed speeds, every value is configurable.
+
+- Everyone sees a header countdown showing whose move it is. Your own countdown is highlighted, turns red near the end, and plays a short sound if sound is on.
+- Building, buying or playing a development card, and completing a trade add the bonus time, capped at one full turn. Undoing a placement takes the bonus back.
+- A Knight or robber in the middle of your turn pauses the turn clock; you return to the time you had left plus the bonus.
+- When a countdown runs out, the game makes that move: a random legal starting settlement or road, the dice roll, random discards, a random robber tile and victim, forfeiting unused free roads, or ending the turn (which closes open offers). Each automatic move is logged for everyone.
+- Timers pause while nobody at the table is connected. After a server restart, or when someone returns to an empty table, everyone gets a 20-second grace period. Countdowns use server time, so devices with wrong clocks still agree.
 ### Trading timing and reliable offers
 
 The trading post separates **Bank / ports - Instant exchange** from **With a player - Send an offer**, with a visible **Selected** label and destination banner. **Trade with bank** exchanges only with the bank at your best rate; no player receives those cards. New player offers start with **no recipient selected**. Choose a named player first (or **Offer to all players**), then review **You give to [name]**, **You receive from [name]**, and **Send offer to [name]**. Counteroffers are always addressed to the offer's sender, and acceptance names the sender. Changing tabs never submits a trade.
@@ -145,7 +163,7 @@ Afterward, the roller moves the robber and chooses from the eligible opponent bu
 
 For five or six players, the primary player rolls and takes ordinary actions. The player **three seats clockwise** then takes an action-only activation: building, development cards, and bank/port trades, but **no second roll or player trading**. Afterward the primary marker advances one seat. Cards age between activations, and either active player can win.
 
-This is **not** the older special-building-phase variant. Separate expansions such as Seafarers and Cities & Knights, bots, public matchmaking, spectators, chat, and turn timers are not part of this game.
+This is **not** the older special-building-phase variant. Separate expansions such as Seafarers and Cities & Knights, bots, public matchmaking, spectators and chat are not part of this game. Turn timers are optional (see Turn timers above).
 
 ### Rules references
 
