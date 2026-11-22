@@ -50,6 +50,7 @@ async function perform(page, move) {
     await page.locator('[data-tab="bank"]').click();
     await choose(page, "bank-give", move.giveResource);
     await choose(page, "bank-receive", move.receiveResource);
+    await page.locator("#bank-count").fill(String(move.count || 1));
     await page.locator("#bank-submit").click();
   } else if (move.type === "playDevelopment") {
     await page.locator(`[data-card="${move.cardId}"]`).click();

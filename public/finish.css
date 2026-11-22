@@ -69,9 +69,10 @@ body { font-size: 15px; font-weight: 450; }
 .empty-development { grid-column: 1 / -1; }
 @keyframes cue-enter { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
 .history-button { border: 0; background: transparent; color: #5d8177; padding: 2px 0; font-size: 11px; text-decoration: underline; }
-.activity-row { display: grid; grid-template-columns: 50px 1fr; gap: 9px; padding: 9px 0; border-bottom: 1px solid #dddac9; font-size: 13px; line-height: 1.5; }
-.activity-row time { color: #969477; font-size: 10px; font-variant-numeric: tabular-nums; }
-.activity-row p { margin: 0; }
+.activity-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px; margin-bottom: 8px; border: 1px solid #ddd5bd; border-radius: 8px; background: #fffaf0; font-size: 13px; line-height: 1.5; }
+.activity-row .ui-icon { width: 30px; height: 30px; padding: 6px; border-radius: 8px; color: #56746a; background: #e7ecdf; }
+.activity-row time { padding-top: 3px; color: #969477; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activity-row p { margin: 3px 0 0; }
 #history-dialog { width: min(740px, calc(100% - 30px)); }
 #history-events { max-height: 60svh; overflow-y: auto; }
 #history-more { margin-top: 14px; width: 100%; }

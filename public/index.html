@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/reference.css">
     <link rel="stylesheet" href="/trade-card.css">
     <link rel="stylesheet" href="/nameplates.css">
+    <link rel="stylesheet" href="/turn-clock.css">
     <link rel="preload" href="/fonts/cinzel-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/source-sans-3-latin.woff2" as="font" type="font/woff2" crossorigin>
   </head>
@@ -68,7 +69,7 @@
           <span class="brand-seal" data-icon="settlement"></span>
           <div><strong>Hearthlands</strong><small>PRIVATE TABLE <button id="copy-code" title="Copy room code"></button></small></div>
         </div>
-        <div id="turn-banner" class="turn-banner" role="status"></div>
+        <div class="turn-status"><div id="turn-banner" class="turn-banner" role="status"></div><div id="turn-clock" class="turn-clock hidden" role="timer"></div></div>
         <div class="header-tools">
           <button id="sound-toggle" class="icon-button" aria-label="Enable sound" aria-pressed="false" title="Optional turn and ping sounds"><span data-icon="sound"></span></button>
           <button id="fullscreen-toggle" class="icon-button" aria-label="Enter fullscreen" title="Fullscreen"><span data-icon="expand"></span></button>
@@ -91,6 +92,8 @@
               <button id="resign-game" class="text-button danger-link hidden">Request removal</button>
               <button id="cancel-removal-request" class="text-button hidden">Cancel removal request</button>
               <button id="transfer-admin" class="text-button hidden">Transfer admin role</button>
+              <button id="restart-game" class="text-button danger-link hidden">End game &amp; start new</button>
+              <div id="game-timer" class="timer-settings room-timer hidden"></div>
               <p class="small-note">Save &amp; exit keeps your seat and holdings. Only the admin can remove players. Admins must choose a successor before leaving. Copy your private resume key before closing an Incognito/private window or moving to another device.</p>
             </details>
           </div>
@@ -142,6 +145,7 @@
             <div id="map-summary" class="map-summary"></div>
             <button id="shuffle-map" class="secondary-button" disabled><span data-icon="shuffle"></span>Shuffle island</button>
             <p id="shuffle-note" class="small-note">Only the host can shuffle. The map is locked once play begins.</p>
+            <div id="lobby-timer" class="timer-settings"></div>
             <button id="start-game" class="primary-button hidden">Begin game</button>
           </section>
           <section id="turn-guide" class="panel-section turn-guide hidden"><p id="turn-eyebrow" class="eyebrow"></p><h2 id="turn-title"></h2><p id="turn-help"></p><div id="phase-steps" class="phase-steps"></div></section>
@@ -165,9 +169,9 @@
           <section id="trade-section" class="panel-section hidden">
             <details id="trade-details" open>
               <summary>Trading post</summary>
-              <div class="trade-tabs">
-                <button class="trade-tab active" data-tab="bank">Bank</button>
-                <button class="trade-tab" data-tab="player">Player</button>
+              <div class="trade-tabs" role="group" aria-label="Trade destination">
+                <button type="button" class="trade-tab active" data-tab="bank" aria-pressed="true" aria-controls="bank-trade"><strong>Bank / ports</strong><small>Instant exchange</small><span class="trade-mode-state">Selected</span></button>
+                <button type="button" class="trade-tab" data-tab="player" aria-pressed="false" aria-controls="player-trade"><strong>With a player</strong><small>Send an offer</small><span class="trade-mode-state">Choose</span></button>
               </div>
               <div id="bank-trade" class="trade-form"></div>
               <div id="player-trade" class="trade-form hidden"></div>
@@ -239,7 +243,7 @@
         <article><strong>01</strong><h3>Found</h3><p>Place two settlements and roads in snake order. Your second settlement gathers starting resources.</p></article>
         <article><strong>02</strong><h3>Gather</h3><p>Roll each turn. Settlements collect one resource from matching tiles; cities collect two.</p></article>
         <article><strong>03</strong><h3>Build</h3><p>Choose a piece above the board, tap a highlighted path or corner, then confirm its preview. Tap your settlement to preview a city upgrade. Cancel or select a different spot before confirming.</p></article>
-        <article><strong>04</strong><h3>Trade</h3><p>Roll first and resolve production or the seven completely before trading. Trade 4:1 with the bank, 3:1 at a generic port, or 2:1 at your matching port. Player trades must involve the active primary player. Accept exchanges the exact offered cards; no gifts or matching resources on both sides.</p></article>
+        <article><strong>04</strong><h3>Trade</h3><p>Roll first and resolve production or the seven completely before trading. Trade 4:1 with the bank, 3:1 at a generic port, or 2:1 at your matching port, several full sets at once if you like. Player trades must involve the active primary player, who may offer to everyone and then pick one player who accepted. Several offers and counteroffers can be open at once; offers with Any cards are answered with a counteroffer, and you can block a player's offers in Trade settings. Accept exchanges the exact offered cards; no gifts or matching resources on both sides.</p></article>
         <article><strong>05</strong><h3>The robber</h3><p>On a seven, everyone holding over seven resources chooses half to discard, rounded down. After all discards, the roller moves the robber and chooses a neighboring opponent to steal one random resource from. Blocked tiles do not produce.</p></article>
         <article><strong>06</strong><h3>Development</h3><p>Pay one sheep, wheat, and ore. Play one older card per activation, before rolling or during actions: Knight moves the robber; Road Building grants two roads; Year of Plenty takes two available resources; Monopoly takes one resource type from every opponent. Hidden victory cards can win immediately when bought.</p></article>
         <article><strong>07</strong><h3>Bonuses</h3><p>The first unbroken road of at least five earns two points. A longer road takes the bonus; the holder keeps ties. Opponent settlements interrupt roads. Three played Knights earn Largest Army; a larger army takes its two points.</p></article>
@@ -250,6 +254,7 @@
       <p>Three or four players use 19 land tiles and 19 cards of each resource. Five or six use 30 land tiles and 24 of each. If production exceeds the bank, nobody receives that type unless just one player is affected; then they take what remains. A city replaces a settlement and returns that piece. You have 15 roads, 5 settlements, and 4 cities.</p>
       <p><strong>Returning later:</strong> close your browser or use Save &amp; exit. Your seat, hand, and board position remain saved. Select the table under Saved tables to return, or use your private resume key on another device. A lost connection never resigns for you.</p>
       <p><strong>Removal house rule:</strong> request removal from the admin; your holdings stay yours until approved. Only the admin may remove a player. The admin must explicitly choose another active player as successor before leaving. Going offline never transfers the admin role. Approved removal returns held resources and unplayed development cards and removes that player's roads and buildings. Used card effects are not undone. The island and supply size remain unchanged; survivors can continue, including two-player continuation.</p>
+      <p><strong>Turn timers:</strong> Off unless the admin chooses 30s, 60s, 120s, 240s or custom per-move times. When a countdown runs out the game makes that move for you (random starting spot, roll, random discards or robber, or ending the turn). Building and trading add bonus time. Timers pause while nobody is connected.</p>
       <p><strong>Placement undo house rule:</strong> Undo (Ctrl+Z or Cmd+Z) reverses eligible placements during your own activation and refunds their cost. It cannot undo another player's turn, a completed game, trades, drawn cards, dice results, or theft. A starting settlement can be changed before confirming its road; the road finishes that setup turn. Moving the robber can be undone only before stealing or another irreversible action. Unconfirmed previews can always be cancelled before submission.</p>
       <p><strong>Development decks:</strong> three/four-player games contain 14 Knights, 5 Victory Points, and 2 each of Monopoly, Road Building, and Year of Plenty (25 total). Five/six-player games contain 20 Knights, 5 Victory Points, and 3 each of those progress cards (34 total).</p>
       <p class="victory-note">Reach <strong>10 points on your own activation</strong> to win, including hidden victory cards. Victory is automatic.</p>
@@ -287,6 +292,13 @@
       <p class="eyebrow">ADMIN HANDOVER</p><h2 id="admin-transfer-title">Choose the next admin</h2>
       <div id="admin-transfer-choices"></div><p class="small-note">Exactly one player is admin. You remain a player after handing over the role.</p>
       <div class="dialog-actions"><button id="admin-transfer-cancel" class="secondary-button">Cancel</button><button id="admin-transfer-confirm" class="primary-button">Transfer role</button></div>
+    </dialog>
+    <dialog id="restart-game-dialog" aria-labelledby="restart-game-title">
+      <p class="eyebrow">ADMIN ACTION</p><h2 id="restart-game-title">End this game?</h2>
+      <p>The current board, hands, scores, and unfinished actions will be closed. Everyone keeps their seat and returns to a fresh lobby where the admin can shuffle and begin a new game.</p>
+      <p class="dialog-network-status" role="status"></p>
+      <label class="confirm-resign"><input id="restart-game-confirmed" type="checkbox"><span>I understand that the current game cannot be resumed.</span></label>
+      <div class="dialog-actions"><button id="restart-game-cancel" class="secondary-button">Keep playing</button><button id="restart-game-confirm" class="danger-button" disabled>End game &amp; open lobby</button></div>
     </dialog>
     <dialog id="history-dialog" aria-labelledby="history-title">
       <button id="close-history" class="dialog-close" aria-label="Close activity history">×</button>
@@ -346,6 +358,7 @@
     <script src="/nameplates.js"></script>
     <script src="/activity.js"></script>
     <script src="/discard.js"></script>
+    <script src="/turn-clock.js"></script>
     <script src="/connection.js"></script>
     <script src="/client.js"></script>
   </body>

@@ -16,6 +16,22 @@ window.ActivityFeed = class ActivityFeed {
     document.getElementById("close-history").onclick = () => this.dialog.close();
     document.getElementById("history-more").onclick = () => this.load();
   }
+  presentation(event) {
+    const type = event.type || "legacy";
+    if (/trade|bank/i.test(type)) return { icon: "cards", label: "Trade" };
+    if (/dice|production|discard|stolen|robber/i.test(type)) return { icon: "resources", label: "Resources" };
+    if (/road/i.test(type)) return { icon: "road", label: "Road" };
+    if (/settlement/i.test(type)) return { icon: "settlement", label: "Settlement" };
+    if (/city/i.test(type)) return { icon: "city", label: "City" };
+    if (/development|knight/i.test(type)) return { icon: "knight", label: "Development" };
+    if (/admin|remov|resign|player\./i.test(type)) return { icon: "crown", label: "Table" };
+    if (/win|victory|finished|rematch|restart/i.test(type)) return { icon: "crown", label: "Game" };
+    if (/turn|started|joined/i.test(type)) return { icon: "pointer", label: "Turn" };
+    return { icon: "settlement", label: "Activity" };
+  }
+  time(event) {
+    return event.at ? new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  }
   escape(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
   cursorKey(state) { return `hearthlands-activity:${state.code}:${state.viewerId}`; }
   persist(value) {
@@ -46,11 +62,13 @@ window.ActivityFeed = class ActivityFeed {
     const events = (state.log || []).filter((event) => Number.isSafeInteger(event.seq) && event.seq > this.highest)
       .sort((a, b) => a.seq - b.seq);
     if (events.length) {
-      const important = events.filter((event) => /trade|admin|remov|resign|win|victory/i.test(event.type || ""));
-      const chosen = important.length ? important : events.filter((event) => !/production|turn/i.test(event.type || ""));
-      const display = chosen.length ? chosen : [events[events.length - 1]];
+      // Open-offer answers matter to the offerer; everyone else sees them on the offer card instead of as toasts.
+      const visible = events.filter((event) => event.type !== "tradeResponded" || event.data?.fromId === state.viewerId);
+      const important = visible.filter((event) => /trade|admin|remov|resign|win|victory/i.test(event.type || ""));
+      const chosen = important.length ? important : visible.filter((event) => !/production|turn/i.test(event.type || ""));
+      const display = chosen.length ? chosen : visible.slice(-1);
       for (const event of display.slice(-3)) this.show(event, state);
-      if (events.length > display.length) {
+      if (display.length && events.length > display.length) {
         const lastCue = this.cues[this.cues.length - 1];
         if (lastCue) {
           const note = document.createElement("small");
@@ -74,10 +92,8 @@ window.ActivityFeed = class ActivityFeed {
     cue.dataset.eventType = event.type || "game";
     const owner = [...state.players, ...(state.departedPlayers || [])].find((player) => player.id === event.actorId);
     if (owner) cue.style.setProperty("--actor-color", owner.color);
-    const title = /trade/i.test(event.type || "") ? "Trade update" :
-      /admin|remov|resign/i.test(event.type || "") ? "Table update" :
-      /win|victory/i.test(event.type || "") ? "Game complete" : "Game activity";
-    cue.innerHTML = `${Tabletop.icon(/trade/i.test(event.type || "") ? "cards" : /admin|win/i.test(event.type || "") ? "crown" : "settlement")}<div><strong>${title}</strong><p>${this.escape(event.message)}</p></div>`;
+    const display = this.presentation(event);
+    cue.innerHTML = `${Tabletop.icon(display.icon)}<div><strong>${display.label} update</strong><p>${this.escape(event.message)}</p></div>`;
     container.appendChild(cue);
     this.cues.push(cue);
     while (this.cues.length > 3) this.cues.shift().remove();
@@ -87,8 +103,10 @@ window.ActivityFeed = class ActivityFeed {
     }, 6200);
   }
   renderRecent(state) {
-    document.getElementById("game-log").innerHTML = [...(state.log || [])].reverse().map((event) =>
-      `<div class="log-item" data-event-id="${event.id}" data-event-type="${event.type || "legacy"}"><span>${this.escape(event.message)}</span></div>`).join("");
+    document.getElementById("game-log").innerHTML = [...(state.log || [])].reverse().map((event) => {
+      const display = this.presentation(event);
+      return `<article class="log-item" data-event-id="${event.id}" data-event-type="${event.type || "legacy"}">${Tabletop.icon(display.icon)}<div><span class="log-category">${display.label}</span><p>${this.escape(event.message)}</p></div><time>${this.time(event)}</time></article>`;
+    }).join("");
   }
   async open() {
     if (!this.getState()) return;
@@ -132,8 +150,10 @@ window.ActivityFeed = class ActivityFeed {
     }
   }
   renderHistory() {
-    document.getElementById("history-events").innerHTML = [...this.history.values()].sort((a, b) => b.seq - a.seq).map((event) =>
-      `<article class="activity-row" data-event-id="${event.id}" data-seq="${event.seq}"><time>${new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time><p>${this.escape(event.message)}</p></article>`).join("");
+    document.getElementById("history-events").innerHTML = [...this.history.values()].sort((a, b) => b.seq - a.seq).map((event) => {
+      const display = this.presentation(event);
+      return `<article class="activity-row" data-event-id="${event.id}" data-seq="${event.seq}">${Tabletop.icon(display.icon)}<div><span class="activity-category">${display.label}</span><p>${this.escape(event.message)}</p></div><time>${this.time(event)}</time></article>`;
+    }).join("");
   }
   clear() {
     for (const cue of this.cues) cue.remove();

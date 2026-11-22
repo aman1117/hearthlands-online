@@ -542,10 +542,10 @@ for (const departure of [0, 1, 2]) {
     give(room, room.players[0], { wood: 1 });
     give(room, room.players[1], { ore: 1 });
     act(room, { type: "offerTrade", targetId: room.players[1].id, give: { wood: 1 }, want: { ore: 1 } });
-    const offer = structuredClone(room.trade);
+    const offer = structuredClone(room.trades);
     retire(room, room.players[departure]);
-    if (departure === 2) assert.deepEqual(room.trade, offer);
-    else assert.equal(room.trade, null);
+    if (departure === 2) assert.deepEqual(room.trades, offer);
+    else assert.deepEqual(room.trades, []);
     conserved(room);
   });
 }

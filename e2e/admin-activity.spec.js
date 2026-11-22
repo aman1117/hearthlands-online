@@ -134,8 +134,8 @@ test("bank and player trades notify every connected player with exact public amo
     await actor.locator("#give-wood").fill("1");
     await actor.locator("#want-ore").fill("1");
     await actor.locator("#offer-submit").click();
-    await target.waitForFunction(() => state.trade?.targetId === state.viewerId);
-    await target.locator("#accept-trade").click();
+    await target.waitForFunction(() => state.trades?.some((trade) => trade.targetId === state.viewerId));
+    await target.locator('.trade-offer [data-trade-action="accept"]').click();
     for (const page of t.pages) {
       await expect(page.locator("#game-log")).toContainText("accepted");
       await expect(page.locator("#activity-notifications")).toContainText("1 wood");

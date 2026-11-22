@@ -124,9 +124,10 @@ function recordPlacement(room, before) {
   room.placementUndoJournal = { version: 1, context: before.context, entries: [...before.entries, entry].slice(-MAX_PLACEMENTS) };
 }
 
-function preserveAfterAction(action) {
-  return action.type === "offerTrade" || action.type === "cancelTrade" ||
-    (action.type === "respondTrade" && action.accept === false) || action.type === "undoPlacement";
+// Offers, open-offer responses and trade blocks move no cards; only completed exchanges end the undo window.
+function preserveAfterAction(action, trade) {
+  return ["offerTrade", "cancelTrade", "setEmbargo", "undoPlacement"].includes(action.type) ||
+    (action.type === "respondTrade" && (action.accept === false || trade?.targetId === null));
 }
 
 // House rule: apply only the newest bounded inverse patch, never a room snapshot.

@@ -6,6 +6,9 @@ const { spreadResources } = require("./resource-layout");
 const {
   capturePlacement, recordPlacement, invalidatePlacementUndo, preserveAfterAction, undoOpportunity, undoLatestPlacement,
 } = require("./placement-undo");
+const {
+  TIMER_PRESETS, normalizeTimerSettings, timerSettings, timerStage, stageSignature, syncTimer, adjustTimerAfterAction, publicTurnTimer,
+} = require("./turn-timer");
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 const COLORS = ["#de5b43", "#2d82c7", "#f2b84b", "#6d9f4f", "#8357a5", "#20a398"];
@@ -196,11 +199,12 @@ const PUBLIC_EVENT_FIELDS = {
   robberMoved: ["tileId"],
   resourceStolen: ["victimId", "count"],
   bankTrade: ["give", "want", "ratio"],
-  tradeOffered: ["tradeId", "fromId", "targetId", "give", "want"],
-  tradeCounteroffered: ["tradeId", "fromId", "targetId", "give", "want", "replacesTradeId"],
+  tradeOffered: ["tradeId", "fromId", "targetId", "give", "want", "anyGive", "anyWant", "counterTo", "replacesTradeId"],
+  tradeCounteroffered: ["tradeId", "fromId", "targetId", "give", "want", "anyGive", "anyWant", "counterTo", "replacesTradeId"],
   tradeAccepted: ["tradeId", "fromId", "targetId", "give", "want"],
+  tradeResponded: ["tradeId", "fromId", "playerId", "response"],
   tradeDeclined: ["tradeId", "fromId", "targetId", "give", "want"],
-  tradeCancelled: ["tradeId", "fromId", "targetId", "give", "want", "reason"],
+  tradeCancelled: ["tradeId", "fromId", "targetId", "give", "want", "anyGive", "anyWant", "counterTo", "reason"],
   developmentBought: ["count"],
   developmentPlayed: ["cardType", "resource", "count"],
   freeRoadsForfeited: ["count"],
@@ -208,6 +212,8 @@ const PUBLIC_EVENT_FIELDS = {
   gameFinished: ["winnerId", "reason", "points"],
   playerResigned: ["resourceCount", "developmentCount", "roadCount", "settlementCount", "cityCount"],
   placementUndone: ["placementType", "targetId", "count"],
+  turnTimedOut: ["kind", "playerIds"],
+  turnTimerChanged: ["preset", "durations"],
   legacy: [],
 };
 const isRecord = (value) => value !== null && typeof value === "object" &&
@@ -310,18 +316,68 @@ function resourceDescription(bundle) {
     .map((resource) => `${bundle[resource]} ${resource}`).join(", ");
 }
 
+// Colonist-parity limits: active offers per player and identical re-offers per turn curb spam.
+const TRADE_LIMITS = Object.freeze({ activeTurnPlayer: 5, activeOther: 3, identicalTurnPlayer: 3, identicalOther: 2, maxAny: 4 });
+
 function publicTrade(trade) {
-  return { tradeId: trade.id, fromId: trade.fromId, targetId: trade.targetId, give: trade.give, want: trade.want };
+  return {
+    tradeId: trade.id, fromId: trade.fromId, targetId: trade.targetId, give: trade.give, want: trade.want,
+    ...(trade.anyGive ? { anyGive: trade.anyGive } : {}), ...(trade.anyWant ? { anyWant: trade.anyWant } : {}),
+    ...(trade.counterTo ? { counterTo: trade.counterTo } : {}),
+  };
+}
+// An open offer (targetId null) is addressed to every other active player; the offerer chooses among acceptances.
+function isOpenTrade(trade) {
+  return Boolean(trade) && trade.targetId === null;
+}
+function isOpenEnded(trade) {
+  return Boolean(trade?.anyGive || trade?.anyWant);
+}
+function compactBundle(bundle) {
+  return Object.fromEntries(RESOURCES.filter((resource) => bundle[resource] > 0).map((resource) => [resource, bundle[resource]]));
+}
+function storedTrade(trade) {
+  return {
+    id: trade.id, fromId: trade.fromId, targetId: trade.targetId ?? null, give: trade.give, want: trade.want,
+    anyGive: Number.isSafeInteger(trade.anyGive) ? trade.anyGive : 0, anyWant: Number.isSafeInteger(trade.anyWant) ? trade.anyWant : 0,
+    counterTo: trade.counterTo ?? null, responses: isRecord(trade.responses) ? trade.responses : {},
+  };
+}
+// Read-only view of active offers, including saves from before multiple offers existed (single `room.trade`).
+function tradeList(room) {
+  if (Array.isArray(room.trades)) return room.trades;
+  return room.trade ? [storedTrade(structuredClone(room.trade))] : [];
+}
+function migrateTrades(room) {
+  room.trades = tradeList(room).map(storedTrade);
+  delete room.trade;
+  room.embargoes = isRecord(room.embargoes) ? room.embargoes : {};
+}
+function blocksTrading(room, blockerId, otherId) {
+  return Array.isArray(room.embargoes?.[blockerId]) && room.embargoes[blockerId].includes(otherId);
+}
+// Players who may answer a trade: its named target, or every active non-owner who has not blocked the owner.
+function tradeResponders(room, trade) {
+  if (!isOpenTrade(trade)) return [trade.targetId];
+  return activePlayers(room).filter((player) => player.id !== trade.fromId && !blocksTrading(room, player.id, trade.fromId))
+    .map((player) => player.id);
+}
+function describeSide(bundle, any = 0) {
+  return [resourceDescription(bundle), any ? `any ${any} ${any === 1 ? "card" : "cards"}` : ""].filter(Boolean).join(" + ");
 }
 
-function cancelPendingTrade(room, reason, actorId = null) {
-  if (!room.trade) return;
-  const trade = room.trade;
+function closeTrade(room, trade, reason, actorId = null) {
+  const index = room.trades.indexOf(trade);
+  if (index < 0) return;
+  room.trades.splice(index, 1);
   const from = room.players.find((player) => player.id === trade.fromId);
   appendLog(room, `${from?.name || "A player"}'s trade was cancelled (${reason}).`, {
     type: "tradeCancelled", actorId, data: { ...publicTrade(trade), reason },
   });
-  room.trade = null;
+}
+function cancelAllTrades(room, reason, actorId = null) {
+  migrateTrades(room);
+  for (const trade of [...room.trades]) closeTrade(room, trade, reason, actorId);
 }
 
 function isMapPreview(board, playerCount) {
@@ -367,7 +423,7 @@ function createRoom(hostName) {
     robberReturnPhase: null, freeRoadsRemaining: 0, freeRoadsReturnPhase: null,
     developmentPlayed: false, developmentDeck: [], bank: emptyResources(),
     longestRoadHolderId: null, largestArmyHolderId: null,
-    trade: null, winnerId: null, winReason: null, log: [], eventSequence: 0, eventOutbox: [], createdAt: Date.now(),
+    trades: [], embargoes: {}, turnTimer: { preset: "off" }, timer: null, winnerId: null, winReason: null, log: [], eventSequence: 0, eventOutbox: [], createdAt: Date.now(),
   };
   const player = addPlayer(room, hostName);
   room.hostId = player.id;
@@ -400,7 +456,7 @@ function addPlayer(room, name, reconnectToken = crypto.randomBytes(32).toString(
   return player;
 }
 
-function startGame(room, actorId, random = Math.random) {
+function startGame(room, actorId, random = Math.random, now = Date.now()) {
   if (room.hostId !== actorId) throw new Error("Only the host can start.");
   if (room.phase !== "lobby") throw new Error("The game has already started.");
   if (room.players.length < 3 || room.players.length > 6) {
@@ -430,6 +486,7 @@ function startGame(room, actorId, random = Math.random) {
     type: "gameStarted", actorId,
     data: { playerCount: players.length, boardPlayerCount: expanded ? 6 : 4, firstPlayerId: currentPlayer(room).id },
   });
+  syncTimer(room, now);
 }
 
 function getVertex(room, vertexId) {
@@ -582,7 +639,7 @@ function finishGame(room, winnerId, reason) {
   room.winnerId = winnerId;
   room.winReason = reason;
   room.phase = "finished";
-  cancelPendingTrade(room, "game-finished", winnerId);
+  cancelAllTrades(room, "game-finished", winnerId);
   room.pendingDiscards = {};
   room.robberVictims = [];
   room.mustMoveRobber = false;
@@ -606,7 +663,7 @@ function checkWinner(room) {
 function beginActivation(room) {
   room.turnNumber += 1;
   room.developmentPlayed = false;
-  cancelPendingTrade(room, "turn-ended");
+  cancelAllTrades(room, "turn-ended");
   room.phase = room.turnRole === "secondary" ? "action" : "roll";
   if (room.turnRole === "primary") room.dice = null;
   appendLog(room, `${currentPlayer(room).name}'s ${room.turnRole} turn begins.`, {
@@ -861,98 +918,266 @@ function buildCity(room, player, vertexId) {
     type: "cityBuilt", actorId: player.id, data: { vertexId: vertex.id },
   });
 }
-function bankTrade(room, player, giveResource, receiveResource) {
+// Accepts one legacy batch ({giveResource, receiveResource}) or explicit bundles ({give, want}) of whole rate-sized sets.
+function bankTrade(room, player, action) {
   assertActionPhase(room);
-  if (!RESOURCES.includes(giveResource) || !RESOURCES.includes(receiveResource) || giveResource === receiveResource) {
+  const rates = tradeRates(room, player.id);
+  let give;
+  let want;
+  if (action.give === undefined && action.want === undefined) {
+    const { giveResource, receiveResource } = action;
+    if (!RESOURCES.includes(giveResource) || !RESOURCES.includes(receiveResource) || giveResource === receiveResource) {
+      throw new Error("Choose two different resources.");
+    }
+    give = { ...emptyResources(), [giveResource]: rates[giveResource] };
+    want = { ...emptyResources(), [receiveResource]: 1 };
+  } else {
+    give = normalizeBundle(action.give);
+    want = normalizeBundle(action.want);
+  }
+  const received = totalBundle(want);
+  if (!received || !totalBundle(give)) throw new Error("Choose resources to give and to receive.");
+  if (RESOURCES.some((resource) => give[resource] && want[resource])) {
     throw new Error("Choose two different resources.");
   }
-  if (!room.bank[receiveResource]) throw new Error("The bank has no cards of that resource.");
-  const rate = tradeRates(room, player.id)[giveResource];
-  if (player.resources[giveResource] < rate) throw new Error(`This bank trade costs ${rate} matching resources.`);
-  pay(room, player, { [giveResource]: rate });
-  room.bank[receiveResource] -= 1;
-  player.resources[receiveResource] += 1;
-  appendLog(room, `${player.name} traded with the bank: ${rate} ${giveResource} for 1 ${receiveResource}.`, {
+  const uneven = RESOURCES.find((resource) => give[resource] % rates[resource]);
+  if (uneven) throw new Error(`Give ${uneven} in sets of ${rates[uneven]} (your ${rates[uneven]}:1 rate).`);
+  const sets = RESOURCES.reduce((sum, resource) => sum + give[resource] / rates[resource], 0);
+  if (sets !== received) {
+    throw new Error(`Each full set buys one card: ${sets} ${sets === 1 ? "set buys" : "sets buy"} ${sets} ${sets === 1 ? "card" : "cards"}, not ${received}.`);
+  }
+  if (RESOURCES.some((resource) => room.bank[resource] < want[resource])) {
+    throw new Error(received === 1 ? "The bank has no cards of that resource." : "The bank does not have enough of those resources.");
+  }
+  if (!hasBundle(player, give)) throw new Error(`This bank trade costs ${resourceDescription(give)}.`);
+  pay(room, player, compactBundle(give));
+  for (const resource of RESOURCES) {
+    room.bank[resource] -= want[resource];
+    player.resources[resource] += want[resource];
+  }
+  const ratios = [...new Set(RESOURCES.filter((resource) => give[resource]).map((resource) => rates[resource]))];
+  appendLog(room, `${player.name} traded with the bank: ${resourceDescription(give)} for ${resourceDescription(want)}.`, {
     type: "bankTrade", actorId: player.id,
-    data: { give: { [giveResource]: rate }, want: { [receiveResource]: 1 }, ratio: rate },
+    data: { give: compactBundle(give), want: compactBundle(want), ratio: ratios.length === 1 ? ratios[0] : null },
   });
 }
 function assertDomesticTrade(room) {
   assertActionPhase(room);
   if (room.turnRole !== "primary") throw new Error("Player trading is not allowed during a secondary turn.");
 }
-function offerTrade(room, player, targetId, give, want, replaceTradeId) {
+function findTrade(room, tradeId, fallback) {
+  if (tradeId !== undefined) {
+    const trade = room.trades.find((candidate) => candidate.id === tradeId);
+    if (!trade) throw new Error("That trade is no longer current.");
+    return trade;
+  }
+  // Older clients omitted tradeId when only one offer could exist; accept that only when it is unambiguous.
+  const candidates = room.trades.filter(fallback);
+  if (candidates.length !== 1) throw new Error(candidates.length ? "Choose which trade you mean." : "There is no trade for you.");
+  return candidates[0];
+}
+function normalizeAny(value) {
+  if (value === undefined || value === null) return 0;
+  if (!Number.isSafeInteger(value) || value < 0 || value > TRADE_LIMITS.maxAny) {
+    throw new Error(`Any cards must be a whole number from 0 to ${TRADE_LIMITS.maxAny}.`);
+  }
+  return value;
+}
+function tradeKey(trade) {
+  return JSON.stringify([trade.fromId, trade.targetId, RESOURCES.map((r) => trade.give[r]), RESOURCES.map((r) => trade.want[r]),
+    trade.anyGive, trade.anyWant]);
+}
+function canFundTrade(player, trade) {
+  if (!player || !hasBundle(player, trade.give)) return false;
+  if (!trade.anyGive) return true;
+  const spare = RESOURCES.reduce((sum, resource) => sum + (trade.want[resource] ? 0 : player.resources[resource] - trade.give[resource]), 0);
+  return spare >= trade.anyGive;
+}
+function exchange(from, to, trade) {
+  for (const resource of RESOURCES) {
+    from.resources[resource] += trade.want[resource] - trade.give[resource];
+    to.resources[resource] += trade.give[resource] - trade.want[resource];
+  }
+}
+function offerTrade(room, player, action) {
   assertDomesticTrade(room);
-  if (replaceTradeId != null && replaceTradeId !== room.trade?.id) {
-    throw new Error("This trade offer has closed or changed. Review the current trade before sending another.");
+  const current = currentPlayer(room);
+  const turnPlayer = player.id === current.id;
+  const replaceId = action.replaceTradeId ?? null;
+  const counterId = action.counterTo ?? null;
+  if (replaceId !== null && counterId !== null) throw new Error("Choose either to edit an offer or to counter it.");
+  let replacing = null;
+  let countering = null;
+  const referencedId = replaceId ?? counterId;
+  if (referencedId !== null) {
+    const referenced = room.trades.find((trade) => trade.id === referencedId);
+    if (!referenced) throw new Error("This trade offer has closed or changed. Review the current trade before sending another.");
+    if (replaceId !== null && referenced.fromId === player.id) replacing = referenced;
+    else if (tradeResponders(room, referenced).includes(player.id)) countering = referenced;
+    else throw new Error("Resolve or cancel the existing trade first.");
   }
-  if (room.trade && (replaceTradeId !== room.trade.id ||
-      ![room.trade.fromId, room.trade.targetId].includes(player.id))) {
-    throw new Error("Resolve or cancel the existing trade first.");
+  let targetId = action.targetId;
+  if (countering) {
+    if (targetId !== undefined && targetId !== countering.fromId) throw new Error("A counteroffer goes to the player who made the offer.");
+    targetId = countering.fromId;
   }
-  const target = activePlayers(room).find((other) => other.id === targetId);
-  if (!target || target.id === player.id) throw new Error("Choose another player.");
-  if (player.id !== currentPlayer(room).id && target.id !== currentPlayer(room).id) {
-    throw new Error("Trades must involve the active primary player.");
+  const open = targetId === null;
+  const target = open ? null : activePlayers(room).find((other) => other.id === targetId);
+  if (open) {
+    if (!turnPlayer) throw new Error("Only the active player can offer a trade to everyone.");
+    if (!activePlayers(room).some((other) => other.id !== player.id && !blocksTrading(room, other.id, player.id))) {
+      throw new Error("Everyone blocked trading with you.");
+    }
+  } else {
+    if (!target || target.id === player.id) throw new Error("Choose another player.");
+    if (!turnPlayer && target.id !== current.id) throw new Error("Trades must involve the active primary player.");
+    if (blocksTrading(room, target.id, player.id)) throw new Error(`${target.name} blocked trading with you.`);
   }
-  const normalizedGive = normalizeBundle(give);
-  const normalizedWant = normalizeBundle(want);
-  if (!totalBundle(normalizedGive) || !totalBundle(normalizedWant)) {
+  const trade = {
+    id: id(), fromId: player.id, targetId: open ? null : target.id, give: normalizeBundle(action.give), want: normalizeBundle(action.want),
+    anyGive: normalizeAny(action.anyGive), anyWant: normalizeAny(action.anyWant), counterTo: countering?.id ?? null, responses: {},
+  };
+  if (trade.anyGive && trade.anyWant) throw new Error("Use Any cards on only one side of a trade.");
+  if (!(totalBundle(trade.give) + trade.anyGive) || !(totalBundle(trade.want) + trade.anyWant)) {
     throw new Error("Both sides of a trade need at least one resource.");
   }
-  if (RESOURCES.some((resource) => normalizedGive[resource] && normalizedWant[resource])) {
+  if (RESOURCES.some((resource) => trade.give[resource] && trade.want[resource])) {
     throw new Error("The same resource cannot be on both sides of a trade.");
   }
-  if (!hasBundle(player, normalizedGive)) throw new Error("You cannot offer resources you do not hold.");
-  const replacesTradeId = room.trade?.id;
-  room.trade = { id: id(), fromId: player.id, targetId, give: normalizedGive, want: normalizedWant };
-  appendLog(room, `${player.name} ${replacesTradeId ? "counteroffered" : "offered"} a trade to ${target.name}: ${resourceDescription(normalizedGive)} for ${resourceDescription(normalizedWant)}.`, {
-    type: replacesTradeId ? "tradeCounteroffered" : "tradeOffered", actorId: player.id,
-    data: { ...publicTrade(room.trade), ...(replacesTradeId ? { replacesTradeId } : {}) },
+  if (!hasBundle(player, trade.give)) throw new Error("You cannot offer resources you do not hold.");
+  if (!canFundTrade(player, trade)) throw new Error("You do not hold enough other cards to offer Any cards.");
+  const own = room.trades.filter((other) => other.fromId === player.id && other !== replacing);
+  const activeLimit = turnPlayer ? TRADE_LIMITS.activeTurnPlayer : TRADE_LIMITS.activeOther;
+  if (own.length >= activeLimit) throw new Error(`You can have at most ${activeLimit} active offers. Withdraw one first.`);
+  const key = tradeKey(trade);
+  if (own.some((other) => tradeKey(other) === key)) throw new Error("You already have this exact offer open.");
+  const created = isRecord(room.tradeCreations) && room.tradeCreations.turn === room.turnNumber && isRecord(room.tradeCreations.counts)
+    ? room.tradeCreations : { turn: room.turnNumber, counts: {} };
+  const identicalLimit = turnPlayer ? TRADE_LIMITS.identicalTurnPlayer : TRADE_LIMITS.identicalOther;
+  if ((created.counts[key] || 0) >= identicalLimit) throw new Error("You have offered this exact trade too many times this turn.");
+  room.tradeCreations = { turn: created.turn, counts: { ...created.counts, [key]: (created.counts[key] || 0) + 1 } };
+  if (replacing) room.trades.splice(room.trades.indexOf(replacing), 1, trade);
+  else room.trades.push(trade);
+  const terms = `${describeSide(trade.give, trade.anyGive)} for ${describeSide(trade.want, trade.anyWant)}`;
+  const recipient = open ? "everyone" : target.name;
+  appendLog(room, countering ? `${player.name} counteroffered ${recipient}: ${terms}.`
+    : replacing ? `${player.name} updated their offer to ${recipient}: ${terms}.` : `${player.name} offered a trade to ${recipient}: ${terms}.`, {
+    type: countering ? "tradeCounteroffered" : "tradeOffered", actorId: player.id,
+    data: { ...publicTrade(trade), ...(replacing ? { replacesTradeId: replacing.id } : {}) },
   });
 }
 function respondTrade(room, player, action) {
   assertDomesticTrade(room);
   if (typeof action.accept !== "boolean") throw new Error("Accept must be a boolean.");
-  const trade = room.trade;
-  if (!trade || trade.targetId !== player.id) throw new Error("There is no trade for you.");
-  if (action.tradeId !== undefined && action.tradeId !== trade.id) throw new Error("That trade is no longer current.");
+  const trade = findTrade(room, action.tradeId, (candidate) => tradeResponders(room, candidate).includes(player.id));
+  if (!tradeResponders(room, trade).includes(player.id)) throw new Error("There is no trade for you.");
   const from = activePlayers(room).find((other) => other.id === trade.fromId);
   if (!from) throw new Error("That trading player has left the match.");
+  if (isOpenTrade(trade)) {
+    // Responses to an open offer only signal intent; the offerer completes the exchange with confirmTrade.
+    const response = action.accept ? "accepted" : "declined";
+    if (trade.responses[player.id] === response) throw new Error(`You already ${response} this offer.`);
+    if (action.accept && isOpenEnded(trade)) {
+      throw new Error("Open-ended offers cannot be accepted directly. Counteroffer with the exact cards you would trade.");
+    }
+    if (action.accept && !hasBundle(player, trade.want)) {
+      throw new Error(`You need ${resourceDescription(trade.want)} to accept this offer.`);
+    }
+    trade.responses[player.id] = response;
+    appendLog(room, `${player.name} ${response} ${from.name}'s offer to everyone: ${describeSide(trade.give, trade.anyGive)} for ${describeSide(trade.want, trade.anyWant)}.`, {
+      type: "tradeResponded", actorId: player.id,
+      data: { tradeId: trade.id, fromId: from.id, playerId: player.id, response },
+    });
+    return;
+  }
   if (action.accept) {
+    if (isOpenEnded(trade)) throw new Error("Open-ended offers cannot be accepted directly. Counteroffer with the exact cards you would trade.");
     if (!hasBundle(from, trade.give) || !hasBundle(player, trade.want)) {
       throw new Error("One player no longer has the offered resources.");
     }
-    for (const resource of RESOURCES) {
-      from.resources[resource] += trade.want[resource] - trade.give[resource];
-      player.resources[resource] += trade.give[resource] - trade.want[resource];
-    }
+    exchange(from, player, trade);
     appendLog(room, `${player.name} accepted ${from.name}'s trade: ${from.name} gave ${resourceDescription(trade.give)} for ${resourceDescription(trade.want)}.`, {
       type: "tradeAccepted", actorId: player.id, data: publicTrade(trade),
     });
-  } else appendLog(room, `${player.name} declined ${from.name}'s trade: ${resourceDescription(trade.give)} for ${resourceDescription(trade.want)}.`, {
+  } else appendLog(room, `${player.name} declined ${from.name}'s trade: ${describeSide(trade.give, trade.anyGive)} for ${describeSide(trade.want, trade.anyWant)}.`, {
     type: "tradeDeclined", actorId: player.id, data: publicTrade(trade),
   });
-  room.trade = null;
+  room.trades.splice(room.trades.indexOf(trade), 1);
+}
+function confirmTrade(room, player, action) {
+  assertDomesticTrade(room);
+  const trade = findTrade(room, action.tradeId, (candidate) => isOpenTrade(candidate) && candidate.fromId === player.id);
+  if (!isOpenTrade(trade) || trade.fromId !== player.id) throw new Error("You have no open offer to complete.");
+  const partner = activePlayers(room).find((other) => other.id === action.partnerId && other.id !== player.id);
+  if (!partner || trade.responses[partner.id] !== "accepted" || !tradeResponders(room, trade).includes(partner.id)) {
+    throw new Error("Choose a player who accepted this offer.");
+  }
+  if (!hasBundle(player, trade.give) || !hasBundle(partner, trade.want)) {
+    throw new Error("One player no longer has the offered resources.");
+  }
+  exchange(player, partner, trade);
+  appendLog(room, `${player.name} traded with ${partner.name}: ${player.name} gave ${resourceDescription(trade.give)} for ${resourceDescription(trade.want)}.`, {
+    type: "tradeAccepted", actorId: player.id, data: { ...publicTrade(trade), targetId: partner.id },
+  });
+  room.trades.splice(room.trades.indexOf(trade), 1);
+}
+function withdrawTrade(room, player, action) {
+  assertDomesticTrade(room);
+  const trade = findTrade(room, action.tradeId, (candidate) => candidate.fromId === player.id);
+  if (trade.fromId !== player.id) throw new Error("You have no trade to cancel.");
+  closeTrade(room, trade, "cancelled", player.id);
+}
+// House rule matching Colonist's embargo: a blocker stops the other player's offers reaching them.
+function setEmbargo(room, player, action) {
+  if (!room.board || ["lobby", "finished"].includes(room.phase)) throw new Error("Trading blocks apply only during a game.");
+  if (typeof action.blocked !== "boolean") throw new Error("Blocked must be a boolean.");
+  const other = activePlayers(room).find((candidate) => candidate.id === action.playerId && candidate.id !== player.id);
+  if (!other) throw new Error("Choose another active player.");
+  const blocked = new Set(Array.isArray(room.embargoes[player.id]) ? room.embargoes[player.id] : []);
+  if (blocked.has(other.id) === action.blocked) {
+    throw new Error(action.blocked ? `You already block trading with ${other.name}.` : `You are not blocking ${other.name}.`);
+  }
+  if (action.blocked) blocked.add(other.id);
+  else blocked.delete(other.id);
+  if (blocked.size) room.embargoes[player.id] = [...blocked];
+  else delete room.embargoes[player.id];
 }
 
-function pendingTradeReason(room) {
-  const trade = room.trade;
-  if (!trade) return null;
-  const parties = activePlayers(room).filter((player) => [trade.fromId, trade.targetId].includes(player.id));
-  if (parties.length !== 2 || !parties.some((player) => player.id === currentPlayer(room)?.id)) {
+function tradeUnavailableReason(room, trade) {
+  const from = activePlayers(room).find((player) => player.id === trade.fromId);
+  const target = isOpenTrade(trade) ? null : activePlayers(room).find((player) => player.id === trade.targetId);
+  const current = currentPlayer(room)?.id;
+  if (!from || (!isOpenTrade(trade) && !target) || (from.id !== current && target?.id !== current)) {
     return "trading-player-unavailable";
   } else if (room.phase !== "action" || room.freeRoadsRemaining || room.turnRole !== "primary") {
     return "required-action";
-  } else if (!hasBundle(parties.find((player) => player.id === trade.fromId), trade.give)) {
+  } else if (!canFundTrade(from, trade)) {
     // The sender's offer is public; never infer or announce the recipient's hidden hand.
     return "offered-resources-spent";
+  } else if (target && blocksTrading(room, target.id, from.id)) {
+    return "blocked";
   }
+  const responders = tradeResponders(room, trade);
+  if (!responders.length) return "blocked";
+  if (isOpenTrade(trade) && responders.every((playerId) => trade.responses[playerId] === "declined")) return "declined-by-all";
   return null;
 }
-function reconcilePendingTrade(room) {
-  const reason = pendingTradeReason(room);
-  if (reason) cancelPendingTrade(room, reason);
+// Acceptances already revealed the cards; drop any that public events (e.g. Monopoly) made unfulfillable.
+function pruneResponses(room, trade) {
+  const responders = tradeResponders(room, trade);
+  for (const [playerId, response] of Object.entries(trade.responses)) {
+    const responder = activePlayers(room).find((player) => player.id === playerId);
+    if (!responder || !responders.includes(playerId) || !["accepted", "declined"].includes(response) ||
+        (response === "accepted" && !hasBundle(responder, trade.want))) delete trade.responses[playerId];
+  }
+}
+function reconcileTrades(room) {
+  migrateTrades(room);
+  for (const trade of [...room.trades]) {
+    pruneResponses(room, trade);
+    const reason = tradeUnavailableReason(room, trade);
+    if (reason) closeTrade(room, trade, reason);
+  }
 }
 function buyDevelopment(room, player) {
   assertActionPhase(room);
@@ -1050,7 +1275,8 @@ function executeAction(room, actorId, action, random) {
   if (!action || typeof action !== "object" || Array.isArray(action) || typeof action.type !== "string") {
     throw new Error("Unknown game action.");
   }
-  if (!["offerTrade", "respondTrade", "cancelTrade", "discard"].includes(action.type)) assertTurn(room, actorId);
+  if (!["offerTrade", "respondTrade", "cancelTrade", "discard", "setEmbargo"].includes(action.type)) assertTurn(room, actorId);
+  migrateTrades(room);
   let result;
   let restoredAwards = null;
   switch (action.type) {
@@ -1072,15 +1298,12 @@ function executeAction(room, actorId, action, random) {
     case "buildRoad": buildRoad(room, player, action.edgeId); break;
     case "buildSettlement": buildSettlement(room, player, action.vertexId); break;
     case "buildCity": buildCity(room, player, action.vertexId); break;
-    case "bankTrade": bankTrade(room, player, action.giveResource, action.receiveResource); break;
-    case "offerTrade": offerTrade(room, player, action.targetId, action.give, action.want, action.replaceTradeId); break;
+    case "bankTrade": bankTrade(room, player, action); break;
+    case "offerTrade": offerTrade(room, player, action); break;
     case "respondTrade": respondTrade(room, player, action); break;
-    case "cancelTrade":
-      assertDomesticTrade(room);
-      if (!room.trade || room.trade.fromId !== actorId) throw new Error("You have no trade to cancel.");
-      if (action.tradeId !== undefined && action.tradeId !== room.trade.id) throw new Error("That trade is no longer current.");
-      cancelPendingTrade(room, "cancelled", actorId);
-      break;
+    case "confirmTrade": confirmTrade(room, player, action); break;
+    case "cancelTrade": withdrawTrade(room, player, action); break;
+    case "setEmbargo": setEmbargo(room, player, action); break;
     case "buyDevelopment": buyDevelopment(room, player); break;
     case "playDevelopment": playDevelopment(room, player, action); break;
     case "finishFreeRoads":
@@ -1100,7 +1323,7 @@ function executeAction(room, actorId, action, random) {
   }
   updateScores(room, restoredAwards);
   checkWinner(room);
-  reconcilePendingTrade(room);
+  reconcileTrades(room);
   return result;
 }
 
@@ -1116,17 +1339,89 @@ function commitState(target, source) {
   }
   if (Array.isArray(target)) target.length = source.length;
 }
-function applyAction(room, actorId, action, random = Math.random) {
+function applyAction(room, actorId, action, random = Math.random, now = Date.now()) {
   const next = structuredClone(room);
+  const signatureBefore = stageSignature(room);
   const placement = capturePlacement(next, actorId, action);
   const result = executeAction(next, actorId, action, random);
   if (placement) recordPlacement(next, placement);
-  else if (!preserveAfterAction(action)) invalidatePlacementUndo(next);
+  else if (!preserveAfterAction(action, tradeList(room).find((trade) => trade.id === action.tradeId) || null)) invalidatePlacementUndo(next);
+  adjustTimerAfterAction(next, action, signatureBefore, now);
+  syncTimer(next, now);
   commitState(room, next);
   return result;
 }
 
-function resignPlayer(room, actorId, random = Math.random) {
+const PRESET_LABELS = { off: "off", "30": "30s (very fast)", "60": "60s (fast)", "120": "120s (normal)", "240": "240s (slow)", custom: "custom times" };
+// Admin-only room setting. Changing it mid-game restarts the current countdown with the new times.
+function setTurnTimer(room, actorId, input, now = Date.now()) {
+  if (room.hostId !== actorId) throw new Error("Only the administrator can change the turn timer.");
+  if (room.phase === "finished" || room.winnerId) throw new Error("The game is over.");
+  const settings = normalizeTimerSettings(input);
+  if (JSON.stringify(settings) === JSON.stringify(timerSettings(room))) throw new Error("That turn timer is already selected.");
+  room.turnTimer = settings;
+  room.timer = null;
+  syncTimer(room, now);
+  const durations = settings.preset === "custom" ? settings.durations : TIMER_PRESETS[settings.preset];
+  appendLog(room, settings.preset === "off" ? "The administrator turned the turn timer off."
+    : `The administrator set the turn timer to ${PRESET_LABELS[settings.preset]}: ${durations.turn}s per turn, ${durations.roll}s to roll, ${durations.robber}s for the robber.`, {
+    type: "turnTimerChanged", actorId, data: { preset: settings.preset, durations },
+  });
+}
+
+const TIMEOUT_MESSAGES = {
+  setupSettlement: "a starting settlement was placed for them", setupRoad: "a starting road was placed for them",
+  roll: "the dice were rolled automatically", freeRoads: "their unused free roads were forfeited",
+  discard: "cards were discarded at random", robber: "the robber was moved automatically",
+  steal: "a player to rob was chosen at random", action: "their turn ended",
+};
+function randomDiscard(player, count, random) {
+  const cards = shuffle(RESOURCES.flatMap((resource) => Array(player.resources[resource]).fill(resource)), random).slice(0, count);
+  return Object.fromEntries(RESOURCES.map((resource) => [resource, cards.filter((card) => card === resource).length]));
+}
+// When a countdown runs out the game makes the pending move (random where a choice is needed), as Colonist does.
+function expireTurnTimer(room, now = Date.now(), random = Math.random) {
+  const stage = timerStage(room);
+  const timer = room.timer;
+  if (!stage || !timer || timer.deadline > now || timer.signature !== stageSignature(room, stage)) return false;
+  const next = structuredClone(room);
+  const current = currentPlayer(next);
+  const ids = stage.kind === "discard" ? Object.keys(next.pendingDiscards) : [current.id];
+  const names = ids.map((playerId) => next.players.find((player) => player.id === playerId)?.name).filter(Boolean);
+  appendLog(next, `${names.join(" and ")} ran out of time; ${TIMEOUT_MESSAGES[stage.kind]}.`, {
+    type: "turnTimedOut", actorId: null, data: { kind: stage.kind, playerIds: ids },
+  });
+  const run = (actorId, action) => applyAction(next, actorId, action, random, now);
+  const pick = (choices) => {
+    if (!choices.length) throw new Error("No legal automatic move is available.");
+    return choices[randomIndex(random, choices.length)];
+  };
+  const legal = () => legalActions(next, current.id);
+  switch (stage.kind) {
+    case "setupSettlement": run(current.id, { type: "setupSettlement", vertexId: pick(legal().settlementVertices) }); break;
+    case "setupRoad": run(current.id, { type: "setupRoad", edgeId: pick(legal().roadEdges) }); break;
+    case "roll": run(current.id, { type: "roll" }); break;
+    case "freeRoads": run(current.id, { type: "finishFreeRoads" }); break;
+    case "discard":
+      for (const playerId of ids) {
+        const player = next.players.find((candidate) => candidate.id === playerId);
+        run(playerId, { type: "discard", resources: randomDiscard(player, next.pendingDiscards[playerId], random) });
+      }
+      break;
+    case "robber": run(current.id, { type: "moveRobber", tileId: pick(legal().robberTiles) }); break;
+    case "steal": run(current.id, { type: "steal", targetId: pick(next.robberVictims) }); break;
+    case "action":
+      if (next.freeRoadsRemaining) run(current.id, { type: "finishFreeRoads" });
+      run(current.id, { type: "endTurn" });
+      break;
+  }
+  invalidatePlacementUndo(next);
+  syncTimer(next, now);
+  commitState(room, next);
+  return true;
+}
+
+function resignPlayer(room, actorId, random = Math.random, now = Date.now()) {
   if (!RESIGN_PHASES.includes(room.phase) || room.winnerId || !room.board) {
     throw new Error("You can only resign from an unfinished match.");
   }
@@ -1164,8 +1459,16 @@ function resignPlayer(room, actorId, random = Math.random) {
     resigned: true, connected: false, resignedAt: Date.now(), developmentCards: [],
     knightsPlayed: 0, longestRoad: 0, points: 0, roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4,
   });
-  if (next.trade && [next.trade.fromId, next.trade.targetId].includes(actorId)) {
-    cancelPendingTrade(next, "player-left", actorId);
+  migrateTrades(next);
+  for (const trade of [...next.trades]) {
+    if ([trade.fromId, trade.targetId].includes(actorId)) closeTrade(next, trade, "player-left", actorId);
+    else delete trade.responses[actorId];
+  }
+  delete next.embargoes[actorId];
+  for (const [blockerId, blocked] of Object.entries(next.embargoes)) {
+    const remaining = Array.isArray(blocked) ? blocked.filter((id) => id !== actorId) : [];
+    if (remaining.length) next.embargoes[blockerId] = remaining;
+    else delete next.embargoes[blockerId];
   }
   delete next.pendingDiscards[actorId];
   next.robberVictims = next.robberVictims.filter((id) => id !== actorId);
@@ -1218,6 +1521,7 @@ function resignPlayer(room, actorId, random = Math.random) {
     finishRobber(next);
   }
   checkWinner(next);
+  syncTimer(next, now);
   commitState(room, next);
 }
 
@@ -1226,21 +1530,24 @@ function legalActions(room, viewerId) {
     roadEdges: [], settlementVertices: [], cityVertices: [], robberTiles: [],
     canRoll: false, canEndTurn: false, canBuyDevelopment: false,
     playableCardIds: [], canBankTrade: false, canOfferTrade: false, canFinishFreeRoads: false,
-    canShuffleMap: false, canResign: false, canUndoPlacement: false,
+    canShuffleMap: false, canResign: false, canRestartGame: false, canUndoPlacement: false,
   };
   const player = activePlayers(room).find((candidate) => candidate.id === viewerId);
   if (player && room.phase === "lobby" && !room.winnerId) {
     legal.canShuffleMap = room.hostId === viewerId;
+  }
+  if (player && room.hostId === viewerId && !["lobby", "finished"].includes(room.phase)) {
+    legal.canRestartGame = true;
   }
   if (!player || !room.board || room.winnerId || ["finished", "lobby"].includes(room.phase)) return legal;
   legal.canUndoPlacement = undoOpportunity(room, viewerId) !== null;
   legal.canResign = RESIGN_PHASES.includes(room.phase);
   const active = currentPlayer(room)?.id === viewerId;
   const actionPhase = room.phase === "action" && !room.freeRoadsRemaining;
-  legal.canOfferTrade = actionPhase && room.turnRole === "primary" &&
-    (!room.trade || [room.trade.fromId, room.trade.targetId].includes(viewerId)) && resourceTotal(player) > 0 &&
+  legal.canOfferTrade = actionPhase && room.turnRole === "primary" && resourceTotal(player) > 0 &&
+    tradeList(room).filter((trade) => trade.fromId === viewerId).length < (active ? TRADE_LIMITS.activeTurnPlayer : TRADE_LIMITS.activeOther) &&
     activePlayers(room).some((other) => other.id !== player.id && resourceTotal(other) > 0 &&
-      (active || other.id === currentPlayer(room).id));
+      (active || other.id === currentPlayer(room).id) && !blocksTrading(room, other.id, viewerId));
   if (!active) return legal;
   if (room.phase === "setup") {
     if (room.setupNeedsRoad && player.roadsLeft > 0) {
@@ -1327,7 +1634,14 @@ function publicState(room, viewerId) {
     robberVictims: room.robberVictims, freeRoadsRemaining: room.freeRoadsRemaining,
     bank: room.bank, developmentCount: room.developmentDeck.length,
     longestRoadHolderId: room.longestRoadHolderId, largestArmyHolderId: room.largestArmyHolderId,
-    trade: room.trade, tradeUnavailableReason: pendingTradeReason(room),
+    trades: tradeList(room).map((trade) => ({
+      ...storedTrade(trade), responders: tradeResponders(room, trade),
+      blockedBy: isOpenTrade(trade) ? activePlayers(room).filter((other) => other.id !== trade.fromId &&
+        blocksTrading(room, other.id, trade.fromId)).map((other) => other.id) : [],
+      unavailableReason: tradeUnavailableReason(room, trade),
+    })),
+    embargoes: isRecord(room.embargoes) ? room.embargoes : {}, tradeLimits: TRADE_LIMITS,
+    turnTimer: publicTurnTimer(room),
     winnerId: room.winnerId, log: events.log, viewerId,
     legal: legalActions(room, viewerId),
   };
@@ -1336,5 +1650,6 @@ function publicState(room, viewerId) {
 
 module.exports = {
   RESOURCES, COSTS, activePlayers, addPlayer, appendPublicEvent, applyAction, createRoom, ensureMapPreview, makeBoard,
-  normalizePublicEvents, publicState, resignPlayer, resourceTotal, shuffleMap, startGame,
+  normalizePublicEvents, publicState, resignPlayer, resourceTotal, shuffleMap, startGame, TRADE_LIMITS, tradeList,
+  setTurnTimer, expireTurnTimer,
 };

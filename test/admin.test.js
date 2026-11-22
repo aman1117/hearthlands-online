@@ -475,6 +475,25 @@ test("same-bound reconnects and cursor movement do not append activity; rematch 
   assert.deepEqual(await h.events(), after);
 });
 
+test("administrator can end an in-progress game and open a fresh lobby without replacing seats", async (t) => {
+  const h = await harness(t);
+  await mutation(h.host, "startGame");
+  const before = h.host.latest;
+  const guest = [...h.seats.values()].find((seat) => seat.playerId !== h.created.playerId);
+  assert.equal((await mutation(guest.socket, "restartGame")).code, "ADMIN_REQUIRED");
+  const payload = { requestId: id(), clientSeq: h.host.latest.nextSequence };
+  assert.equal((await call(h.host, "restartGame", payload)).ok, true);
+  const lobby = h.host.latest;
+  assert.equal(lobby.phase, "lobby");
+  assert.equal(lobby.hostId, before.hostId);
+  assert.deepEqual(lobby.players.map((player) => player.id).sort(), before.players.map((player) => player.id).sort());
+  assert.equal(lobby.players.every((player) =>
+    player.resourceCount === 0 && player.developmentCount === 0 && player.points === 0), true);
+  assert.equal(lobby.log.at(-1).type, "game.restarted");
+  assert.equal((await call(h.host, "restartGame", payload)).ok, true);
+  assert.equal((await h.events()).filter((event) => event.type === "game.restarted").length, 1);
+});
+
 test("administration can transfer after victory without changing game results or player holdings", async (t) => {
   const h = await harness(t);
   await mutation(h.host, "startGame");

@@ -199,17 +199,17 @@ test("offers, legal off-turn counteroffers and accepted trades identify actual p
   give(room, primary, { wood: 3 });
   give(room, other, { ore: 2 });
   act(room, { type: "offerTrade", targetId: other.id, give: { wood: 2 }, want: { ore: 1 } });
-  const initial = room.trade.id;
+  const initial = room.trades.at(-1).id;
   act(room, { type: "offerTrade", targetId: primary.id, replaceTradeId: initial, give: { ore: 2 }, want: { wood: 3 } }, other);
   const counter = events(room, "tradeCounteroffered").at(-1);
   assert.equal(counter.actorId, other.id);
   assert.equal(counter.data.fromId, other.id);
   assert.equal(counter.data.targetId, primary.id);
-  assert.equal(counter.data.replacesTradeId, initial);
+  assert.equal(counter.data.counterTo, initial);
   assert.equal(counter.data.give.ore, 2);
   assert.equal(counter.data.want.wood, 3);
   assert.match(counter.message, /2 ore for 3 wood/);
-  act(room, { type: "respondTrade", tradeId: room.trade.id, accept: true });
+  act(room, { type: "respondTrade", tradeId: room.trades.at(-1).id, accept: true });
   const accepted = events(room, "tradeAccepted").at(-1);
   assert.equal(accepted.actorId, primary.id);
   assert.match(accepted.message, /accepted/);
@@ -227,7 +227,7 @@ test("decline, explicit cancel, turn end and retirement all record pending-trade
     give(room, primary, { wood: 1 });
     give(room, other, { ore: 1 });
     act(room, { type: "offerTrade", targetId: other.id, give: { wood: 1 }, want: { ore: 1 } });
-    const tradeId = room.trade.id;
+    const tradeId = room.trades.at(-1).id;
     if (reason === "decline") act(room, { type: "respondTrade", accept: false, tradeId }, other);
     if (reason === "cancelled") act(room, { type: "cancelTrade", tradeId });
     if (reason === "turn-ended") act(room, { type: "endTurn" });
@@ -238,7 +238,7 @@ test("decline, explicit cancel, turn end and retirement all record pending-trade
     assert.equal(recorded[0].data.give.wood, 1);
     assert.equal(recorded[0].data.want.ore, 1);
     if (reason !== "decline") assert.equal(recorded[0].data.reason, reason);
-    assert.equal(room.trade, null);
+    assert.deepEqual(room.trades, []);
   }
 });
 
@@ -432,7 +432,7 @@ test("invalid gameplay never enqueues or consumes an event sequence", () => {
 test("server-only dotted event types preserve public IDs and remain normalization-idempotent", () => {
   const { room, player } = createRoom("Host");
   const types = ["player.joined", "player.reconnected", "player.disconnected", "admin.transferred",
-    "removal.requested", "removal.cancelled", "removal.declined", "player.removed", "game.rematched"];
+    "removal.requested", "removal.cancelled", "removal.declined", "player.removed", "game.rematched", "game.restarted"];
   const data = { playerId: player.id, successorId: "successor", fromPlayerId: player.id, toPlayerId: "target" };
   for (const type of types) {
     const event = appendPublicEvent(room, { type, actorId: player.id, message: type, data }, 1234);

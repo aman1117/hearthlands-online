@@ -31,7 +31,7 @@ window.GameControls = (() => {
     const items = players.map((p) => ({ value: p.id, label: p.name, disabled }));
     const value = configure(id, items, selected, onChange);
     const tab = items.find((item) => item.value === value)?.value || items[0]?.value;
-    return `<fieldset id="${id}" class="player-choice" data-control="${id}" role="radiogroup"><legend>${escape(title)}</legend>${players.map((p) => `
+    return `<fieldset id="${id}" class="player-choice" data-control="${id}" role="radiogroup" aria-labelledby="${id}-legend"><legend id="${id}-legend">${escape(title)}</legend>${players.map((p) => `
       <button type="button" role="radio" data-picker="${id}" data-value="${p.id}" aria-checked="${p.id === value}" tabindex="${p.id === tab ? 0 : -1}" ${disabled ? "disabled" : ""}><span class="seat-chip" style="--seat-color:${p.color}"></span>${escape(p.name)}</button>`).join("")}</fieldset>`;
   }
   function select(id, title, items, { selected, onChange } = {}) {
